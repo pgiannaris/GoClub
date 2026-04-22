@@ -1,0 +1,106 @@
+/*
+* global.css
+*
+* Global styles for the entire application
+ */
+
+/* Tailwind CSS */
+@import 'tailwindcss';
+
+/* local styles - update the below if you add a new style */
+@import './theme.css';
+@import './theme.utilities.css';
+@import './shadcn-ui.css';
+@import './markdoc.css';
+@import './makerkit.css';
+
+/* plugins - update the below if you add a new plugin */
+@plugin "tailwindcss-animate";
+
+/* content sources - update the below if you add a new path */
+@source "../../../packages/*/src/**/*.{ts,tsx}";
+@source "../../../packages/features/*/src/**/*.{ts,tsx}";
+@source "../../../packages/billing/*/src/**/*.{ts,tsx}";
+@source "../../../packages/plugins/*/src/**/*.{ts,tsx}";
+@source "../../../packages/cms/*/src/**/*.{ts,tsx}";
+@source "../{app,components,config,lib}/**/*.{ts,tsx}";
+
+/* variants - update the below if you add a new variant */
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
+  }
+
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border, currentColor);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: theme(--color-muted-foreground);
+  }
+}
+
+.dark\:shadow-primary\/30 {
+  background-color: #0f6bdc;
+  border: 2px #4189e2 solid;
+  color: white;
+}
+
+.arrowLeftIcon {
+  color: inherit;
+  stroke: currentColor;
+}
+
+[data-no-icon-bg='true'] [data-sidebar='menu-icon'] {
+  background-color: transparent !important;
+}
+
+
+.highlight {
+  position: relative;
+  display: inline-block;
+  z-index: 0;
+}
+
+.highlight::before {
+  content: '';
+  position: absolute;
+  left: -0.05em;
+  right: -0.05em;
+  top: 0.45em;
+  bottom: 0.15em;
+  background: #ffe600; /* light mode */
+  transform: rotate(-2deg);
+  border-radius: 0.15rem;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.dark .highlight::before {
+  background: #3b82f6; /* dark mode */
+}
+
+
+@keyframes shimmer {
+  0% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 150% 0;
+  }
+}
+
+.animate-shimmer {
+  background-size: 400% 100%;
+  animation: shimmer 5s infinite linear;
+}

@@ -1,0 +1,2 @@
+-- Placeholder migration to match remote migration history.
+-- The corresponding remote schema change was applied outside this local app migration directory.
