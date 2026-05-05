@@ -1,11 +1,10 @@
 import {
   ArrowLeft,
+  BarChart3,
   Calendar,
   CheckSquare,
   ClipboardList,
   Home,
-  Info,
-  Mail,
   Megaphone,
   Pencil,
   Settings,
@@ -65,13 +64,19 @@ export function getNavigationConfig(pathname?: string) {
             {
               label: 'Polls',
               path: `${projectBasePath}/polls`,
-              Icon: <ClipboardList className={iconClasses} />,
+              Icon: <BarChart3 className={iconClasses} />,
               end: false,
             },
             {
               label: 'Attendance',
               path: `${projectBasePath}/attendance`,
               Icon: <CheckSquare className={iconClasses} />,
+              end: false,
+            },
+            {
+              label: 'Tasks',
+              path: `${projectBasePath}/tasks`,
+              Icon: <ClipboardList className={iconClasses} />,
               end: false,
             },
             {

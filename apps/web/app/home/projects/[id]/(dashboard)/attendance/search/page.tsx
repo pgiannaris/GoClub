@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 
-import { RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@kit/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kit/ui/card';
@@ -40,6 +40,7 @@ export default function AttendanceSearchPage() {
   const [dateFilter, setDateFilter] = useState('');
   const [studentInputFocused, setStudentInputFocused] = useState(false);
   const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
+  const [expandedMeetingIds, setExpandedMeetingIds] = useState<Set<string>>(new Set());
 
   const historyRows = useMemo(
     () => buildAttendanceHistory(sessions, entriesBySession, members),
@@ -82,6 +83,46 @@ export default function AttendanceSearchPage() {
       return matchesStudent && matchesStatus && matchesMeeting && matchesDate;
     });
   }, [dateFilter, historyRows, meetingFilter, statusFilter, studentQuery]);
+
+  const groupedResults = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        sessionId: string;
+        sessionTitle: string;
+        meetingDate: string;
+        rows: typeof filteredRows;
+      }
+    >();
+
+    filteredRows.forEach((row) => {
+      const existing = groups.get(row.session_id);
+      if (existing) {
+        existing.rows.push(row);
+        return;
+      }
+
+      groups.set(row.session_id, {
+        sessionId: row.session_id,
+        sessionTitle: row.session_title,
+        meetingDate: row.meeting_date,
+        rows: [row],
+      });
+    });
+
+    return Array.from(groups.values()).sort((a, b) =>
+      b.meetingDate.localeCompare(a.meetingDate),
+    );
+  }, [filteredRows]);
+
+  useEffect(() => {
+    const validMeetingIds = new Set(groupedResults.map((group) => group.sessionId));
+    setExpandedMeetingIds((current) => {
+      if (current.size === 0) return current;
+      const next = new Set(Array.from(current).filter((id) => validMeetingIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [groupedResults]);
 
   useEffect(() => {
     if (studentSuggestions.length === 0) {
@@ -271,57 +312,120 @@ export default function AttendanceSearchPage() {
 
       <Card className="border-border/70 shadow-sm">
         <CardHeader>
-          <CardTitle>Results</CardTitle>
-          <CardDescription>
-            {filteredRows.length} matching attendance record{filteredRows.length === 1 ? '' : 's'}.
-          </CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Results</CardTitle>
+              <CardDescription>
+                {groupedResults.length} meeting{groupedResults.length === 1 ? '' : 's'} and{' '}
+                {filteredRows.length} matching attendance record{filteredRows.length === 1 ? '' : 's'}.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const allExpanded =
+                    groupedResults.length > 0 &&
+                    groupedResults.every((group) => expandedMeetingIds.has(group.sessionId));
+                  if (allExpanded) {
+                    setExpandedMeetingIds(new Set());
+                    return;
+                  }
+                  setExpandedMeetingIds(
+                    new Set(groupedResults.map((group) => group.sessionId)),
+                  );
+                }}
+                disabled={loading || groupedResults.length === 0}
+              >
+                {groupedResults.length > 0 &&
+                groupedResults.every((group) => expandedMeetingIds.has(group.sessionId))
+                  ? 'Collapse all'
+                  : 'Expand all'}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="max-h-[70vh] overflow-auto">
-            <table className="min-w-full divide-y divide-border/60">
-              <thead className="sticky top-0 bg-background/95 backdrop-blur">
-                <tr className="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Meeting</th>
-                  <th className="px-4 py-3">Student</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {loading ? (
-                  Array.from({ length: 8 }).map((_, index) => (
-                    <tr key={`search-skeleton-${index}`} className="animate-pulse">
-                      <td colSpan={5} className="px-4 py-4">
-                        <div className="h-10 rounded-xl bg-muted/40" />
-                      </td>
-                    </tr>
-                  ))
-                ) : filteredRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                      No attendance records match the current filters.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRows.map((row) => (
-                    <tr key={row.key} className="transition-colors hover:bg-muted/20">
-                      <td className="px-4 py-3 text-sm">{formatReadableDate(row.meeting_date)}</td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{row.session_title}</div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">{row.member_name}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {row.is_roster ? 'Roster' : 'Manual'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <AttendanceStatusBadge status={row.status} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <div className="divide-y divide-border/60">
+              {loading ? (
+                Array.from({ length: 8 }).map((_, index) => (
+                  <div key={`search-skeleton-${index}`} className="animate-pulse px-4 py-4">
+                    <div className="h-10 rounded-xl bg-muted/40" />
+                  </div>
+                ))
+              ) : groupedResults.length === 0 ? (
+                <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+                  No attendance records match the current filters.
+                </div>
+              ) : (
+                groupedResults.map((group) => {
+                  const isExpanded = expandedMeetingIds.has(group.sessionId);
+                  return (
+                    <div key={group.sessionId}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/20"
+                        onClick={() =>
+                          setExpandedMeetingIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(group.sessionId)) next.delete(group.sessionId);
+                            else next.add(group.sessionId);
+                            return next;
+                          })
+                        }
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <span className="font-medium">{group.sessionTitle}</span>
+                          </div>
+                          <div className="pl-6 text-xs text-muted-foreground">
+                            {formatReadableDate(group.meetingDate)}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {group.rows.length} record{group.rows.length === 1 ? '' : 's'}
+                        </div>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="pl-8">
+                        <table className="min-w-full border-t border-border/50">
+                          <thead className="bg-muted/20">
+                            <tr className="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              <th className="px-4 py-2">Student</th>
+                              <th className="px-4 py-2">Type</th>
+                              <th className="px-4 py-2">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/40">
+                            {group.rows.map((row) => (
+                              <tr key={row.key} className="transition-colors hover:bg-muted/10">
+                                <td className="px-4 py-3 text-sm">{row.member_name}</td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground">
+                                  {row.is_roster ? 'Roster' : 'Manual'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <AttendanceStatusBadge status={row.status} />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -48,6 +48,29 @@
   textarea::placeholder {
     color: theme(--color-muted-foreground);
   }
+
+  /* Remove forced uppercase styling globally. */
+  .uppercase,
+  [class~='uppercase'] {
+    text-transform: none !important;
+    letter-spacing: normal;
+  }
+}
+
+/* Ensure interactive elements use pointer cursor by default.
+   Excludes disabled controls and allows opt-out via the `.no-pointer` class. */
+@layer base {
+  a:not(.no-pointer),
+  button:not([disabled]):not(.no-pointer),
+  [role='button']:not([disabled]):not(.no-pointer),
+  input[type='button']:not([disabled]):not(.no-pointer),
+  input[type='submit']:not([disabled]):not(.no-pointer),
+  input[type='reset']:not([disabled]):not(.no-pointer),
+  label[for]:not(.no-pointer),
+  summary:not(.no-pointer),
+  [role='link']:not(.no-pointer) {
+    cursor: pointer;
+  }
 }
 
 .dark\:shadow-primary\/30 {
@@ -64,7 +87,6 @@
 [data-no-icon-bg='true'] [data-sidebar='menu-icon'] {
   background-color: transparent !important;
 }
-
 
 .highlight {
   position: relative;
@@ -89,7 +111,6 @@
 .dark .highlight::before {
   background: #3b82f6; /* dark mode */
 }
-
 
 @keyframes shimmer {
   0% {

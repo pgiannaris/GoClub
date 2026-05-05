@@ -1,23 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+
 import { useParams } from 'next/navigation';
 
+import { ChevronDown, Pencil, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@kit/ui/badge';
 import { Button } from '@kit/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kit/ui/card';
 import { Checkbox } from '@kit/ui/checkbox';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@kit/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@kit/ui/dropdown-menu';
 import { Input } from '@kit/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@kit/ui/select';
 import { Textarea } from '@kit/ui/textarea';
+
+import {
+  DashboardEmptyState,
+  DashboardLoadingList,
+  DashboardPageHeader,
+} from '../_components/dashboard-page-primitives';
 
 type PollOption = {
   id: string;
@@ -62,13 +85,37 @@ export default function PollsPage() {
   const projectId = params.id;
 
   const [polls, setPolls] = useState<PollRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilters, setStatusFilters] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [publicVotesOnly, setPublicVotesOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const filteredPolls = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let result = polls.slice();
+
+    const activeStatuses = Object.entries(statusFilters)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (activeStatuses.length > 0) {
+      result = result.filter((p) => activeStatuses.includes(p.status));
+    }
+
+    if (publicVotesOnly) {
+      result = result.filter((p) => Boolean(p.allow_public_votes));
+    }
+
+    if (!q) return result;
+    return result.filter((p) => p.title.toLowerCase().includes(q));
+  }, [polls, searchQuery, statusFilters, publicVotesOnly]);
   const [saving, setSaving] = useState(false);
   const [canManagePolls, setCanManagePolls] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [selectedPoll, setSelectedPoll] = useState<PollRecord | null>(null);
   const [form, setForm] = useState<PollForm>(EMPTY_FORM);
-  const optionsLocked = Boolean(selectedPoll && selectedPoll.total_votes > 0);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -79,9 +126,12 @@ export default function PollsPage() {
       setLoading(true);
 
       try {
-        const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/polls`, {
-          credentials: 'include',
-        });
+        const response = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/polls`,
+          {
+            credentials: 'include',
+          },
+        );
 
         const payload = (await response.json().catch(() => ({}))) as {
           error?: string;
@@ -101,7 +151,9 @@ export default function PollsPage() {
         setCanManagePolls(Boolean(payload.permissions?.canManage));
       } catch (error) {
         if (cancelled) return;
-        toast.error(error instanceof Error ? error.message : 'Failed to load polls');
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to load polls',
+        );
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -129,7 +181,9 @@ export default function PollsPage() {
       description: poll.description ?? '',
       status: normalizeStatus(poll.status),
       allowPublicVotes: Boolean(poll.allow_public_votes),
-      closesAt: poll.closes_at ? toDateTimeLocalInput(new Date(poll.closes_at)) : '',
+      closesAt: poll.closes_at
+        ? toDateTimeLocalInput(new Date(poll.closes_at))
+        : '',
       options:
         poll.poll_options.length > 0
           ? poll.poll_options.map((option) => option.option_text)
@@ -157,7 +211,10 @@ export default function PollsPage() {
       return;
     }
 
-    if (new Set(options.map((option) => option.toLowerCase())).size !== options.length) {
+    if (
+      new Set(options.map((option) => option.toLowerCase())).size !==
+      options.length
+    ) {
       toast.error('Poll options must be unique');
       return;
     }
@@ -207,115 +264,253 @@ export default function PollsPage() {
       setForm(EMPTY_FORM);
       toast.success(selectedPoll ? 'Poll updated' : 'Poll created');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save poll');
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save poll',
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  const deletePoll = async () => {
+    if (!projectId || !selectedPoll) return;
+
+    setDeleting(true);
+
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/polls/${encodeURIComponent(selectedPoll.id)}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        },
+      );
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to delete poll');
+      }
+
+      setPolls((current) =>
+        current.filter((poll) => poll.id !== selectedPoll.id),
+      );
+      setEditorOpen(false);
+      setSelectedPoll(null);
+      setForm(EMPTY_FORM);
+      setDeleteModalOpen(false);
+      toast.success('Poll deleted');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to delete poll',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Polls</h1>
-          <p className="text-muted-foreground">
-            Create member polls, publish them to the site, and track vote totals.
-          </p>
-        </div>
+      <DashboardPageHeader
+        title="Polls"
+        description="Create member polls, publish them to the site, and track vote totals."
+        action={
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Search polls"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9"
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  Filter
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
 
-        {canManagePolls ? (
-          <Button type="button" onClick={openCreateModal}>
-            + New Poll
-          </Button>
-        ) : null}
-      </div>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Status</DropdownMenuLabel>
+                {['draft', 'published', 'closed'].map((s) => (
+                  <DropdownMenuCheckboxItem
+                    key={s}
+                    checked={Boolean(statusFilters[s])}
+                    onSelect={(e) => {
+                      e.preventDefault?.();
+                      setStatusFilters((p) => ({ ...p, [s]: !p[s] }));
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-sm border">
+                        {statusFilters[s] ? (
+                          <svg
+                            className="h-3 w-3"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                          >
+                            <path
+                              d="M20 6L9 17l-5-5"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span>{s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                ))}
+
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Options</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={publicVotesOnly}
+                  onSelect={(e) => {
+                    e.preventDefault?.();
+                    setPublicVotesOnly((v) => !v);
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-sm border">
+                      {publicVotesOnly ? (
+                        <svg
+                          className="h-3 w-3"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                        >
+                          <path
+                            d="M20 6L9 17l-5-5"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : null}
+                    </span>
+                    <span>Allow public votes</span>
+                  </span>
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {canManagePolls ? (
+              <Button type="button" onClick={openCreateModal}>
+                + New Poll
+              </Button>
+            ) : null}
+          </div>
+        }
+      />
 
       {!canManagePolls ? (
-        <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          Only owners and admins can create or edit polls. You can still review current poll activity here.
+        <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
+          Only owners and admins can create or edit polls. You can still review
+          current poll activity here.
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Poll Board</CardTitle>
-          <CardDescription>
-            Drafts stay internal. Published polls can appear on the public site and accept votes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {loading &&
-            Array.from({ length: 4 }).map((_, index) => (
-              <div key={`poll-loading-${index}`} className="rounded-md border p-4">
-                <div className="h-4 w-48 animate-pulse rounded bg-muted/60" />
-              </div>
-            ))}
+      <div className="space-y-3">
+        {loading ? <DashboardLoadingList keyPrefix="poll-loading" /> : null}
 
-          {!loading && polls.length === 0 && (
-            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-              No polls yet. Create one to collect votes from members or the public site.
-            </div>
-          )}
+        {/** filter polls by search */}
+        {/** compute filteredPolls below */}
+        {!loading && filteredPolls.length === 0 && (
+          <DashboardEmptyState message="No polls yet. Create one to collect votes from members or the public site." />
+        )}
 
-          {!loading &&
-            polls.map((poll) => {
-              const content = (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{poll.title}</p>
-                        <Badge variant="outline">{poll.status}</Badge>
-                        {poll.allow_public_votes ? <Badge>Public voting</Badge> : null}
-                      </div>
-                      {poll.description ? (
-                        <p className="text-sm text-muted-foreground">{poll.description}</p>
+        {!loading &&
+          filteredPolls.map((poll) => {
+            const content = (
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium">{poll.title}</p>
+                      <Badge variant="outline">{poll.status}</Badge>
+                      {poll.allow_public_votes ? (
+                        <Badge>Public voting</Badge>
                       ) : null}
                     </div>
-
-                    <div className="text-right text-xs text-muted-foreground">
-                      <div>{poll.total_votes} vote{poll.total_votes === 1 ? '' : 's'}</div>
-                      <div>{formatPollDate(poll.closes_at)}</div>
-                    </div>
+                    {poll.description ? (
+                      <p className="text-muted-foreground text-sm">
+                        {poll.description}
+                      </p>
+                    ) : null}
                   </div>
 
-                  <div className="space-y-2">
-                    {poll.poll_options.map((option) => (
-                      <div
-                        key={option.id}
-                        className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                      >
-                        <span>{option.option_text}</span>
-                        <span className="text-muted-foreground">
-                          {option.vote_count} vote{option.vote_count === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="text-muted-foreground text-right text-xs">
+                    <div>
+                      {poll.total_votes} vote{poll.total_votes === 1 ? '' : 's'}
+                    </div>
+                    <div>{formatPollDate(poll.closes_at)}</div>
                   </div>
                 </div>
-              );
 
-              if (!canManagePolls) {
-                return (
-                  <div key={poll.id} className="rounded-md border p-4">
+                <div className="space-y-2">
+                  {poll.poll_options.map((option) => (
+                    <div
+                      key={option.id}
+                      className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                    >
+                      <span>{option.option_text}</span>
+                      <span className="text-muted-foreground">
+                        {option.vote_count} vote
+                        {option.vote_count === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+
+            if (!canManagePolls) {
+              return (
+                <div key={poll.id} className="rounded-md border p-4">
+                  {content}
+                </div>
+              );
+            }
+
+            return (
+              <div key={poll.id} className="w-full rounded-md border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div
+                    className="flex-1"
+                    onClick={() => openEditModal(poll)}
+                    role="button"
+                  >
                     {content}
                   </div>
-                );
-              }
 
-              return (
-                <button
-                  key={poll.id}
-                  type="button"
-                  className="w-full rounded-md border p-4 text-left transition-colors hover:bg-muted/30"
-                  onClick={() => openEditModal(poll)}
-                >
-                  {content}
-                </button>
-              );
-            })}
-        </CardContent>
-      </Card>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditModal(poll)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSelectedPoll(poll);
+                        setDeleteModalOpen(true);
+                      }}
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+      </div>
 
       <Dialog
         open={editorOpen}
@@ -331,13 +526,17 @@ export default function PollsPage() {
           <DialogHeader>
             <DialogTitle>{selectedPoll ? 'Edit Poll' : 'New Poll'}</DialogTitle>
             <DialogDescription>
-              Set the question, choose the poll options, then decide whether it stays draft, goes live, or closes.
+              Set the question, choose the poll options, then decide whether it
+              stays draft, goes live, or closes.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <label htmlFor="poll-title" className="text-xs text-muted-foreground">
+              <label
+                htmlFor="poll-title"
+                className="text-muted-foreground text-xs"
+              >
                 Title
               </label>
               <Input
@@ -355,7 +554,10 @@ export default function PollsPage() {
             </div>
 
             <div className="space-y-1">
-              <label htmlFor="poll-description" className="text-xs text-muted-foreground">
+              <label
+                htmlFor="poll-description"
+                className="text-muted-foreground text-xs"
+              >
                 Description
               </label>
               <Textarea
@@ -371,35 +573,44 @@ export default function PollsPage() {
                   }))
                 }
               />
-              <div className="text-right text-xs text-muted-foreground">
+              <div className="text-muted-foreground text-right text-xs">
                 {form.description.length}/3000
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
-                <label htmlFor="poll-status" className="text-xs text-muted-foreground">
+                <label
+                  htmlFor="poll-status"
+                  className="text-muted-foreground text-xs"
+                >
                   Status
                 </label>
-                <select
-                  id="poll-status"
-                  className="border-input bg-background flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-2xs outline-none"
+                <Select
                   value={form.status}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setForm((prev) => ({
                       ...prev,
-                      status: normalizeStatus(event.target.value),
+                      status: normalizeStatus(value),
                     }))
                   }
                 >
-                  <option value="draft">Draft</option>
-                  <option value="published">Published</option>
-                  <option value="closed">Closed</option>
-                </select>
+                  <SelectTrigger id="poll-status">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="published">Published</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="poll-closes-at" className="text-xs text-muted-foreground">
+                <label
+                  htmlFor="poll-closes-at"
+                  className="text-muted-foreground text-xs"
+                >
                   Closes At
                 </label>
                 <Input
@@ -431,7 +642,7 @@ export default function PollsPage() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-muted-foreground">Options</label>
+                <label className="text-muted-foreground text-xs">Options</label>
                 <Button
                   type="button"
                   variant="outline"
@@ -443,7 +654,7 @@ export default function PollsPage() {
                         : { ...prev, options: [...prev.options, ''] },
                     )
                   }
-                  disabled={optionsLocked || form.options.length >= 8}
+                  disabled={form.options.length >= 8}
                 >
                   Add Option
                 </Button>
@@ -455,7 +666,6 @@ export default function PollsPage() {
                     value={option}
                     maxLength={120}
                     placeholder={`Option ${index + 1}`}
-                    disabled={optionsLocked}
                     onChange={(event) =>
                       setForm((prev) => ({
                         ...prev,
@@ -474,37 +684,87 @@ export default function PollsPage() {
                         options:
                           prev.options.length <= 2
                             ? prev.options
-                            : prev.options.filter((_, currentIndex) => currentIndex !== index),
+                            : prev.options.filter(
+                                (_, currentIndex) => currentIndex !== index,
+                              ),
                       }))
                     }
-                    disabled={optionsLocked || form.options.length <= 2}
+                    disabled={form.options.length <= 2}
                   >
                     Remove
                   </Button>
                 </div>
               ))}
-
-              {optionsLocked ? (
-                <p className="text-xs text-muted-foreground">
-                  Poll options are locked once votes have been submitted.
-                </p>
-              ) : null}
             </div>
 
             <div className="flex justify-end gap-2">
+              {selectedPoll ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeleteModalOpen(true)}
+                  disabled={saving || deleting}
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setEditorOpen(false)}
-                disabled={saving}
+                disabled={saving || deleting}
               >
                 Cancel
               </Button>
-              <Button type="button" onClick={() => void savePoll()} disabled={saving}>
-                {saving ? 'Saving...' : selectedPoll ? 'Save Changes' : 'Create Poll'}
+              <Button
+                type="button"
+                onClick={() => void savePoll()}
+                disabled={saving || deleting}
+              >
+                {saving
+                  ? 'Saving...'
+                  : selectedPoll
+                    ? 'Save Changes'
+                    : 'Create Poll'}
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={deleteModalOpen}
+        onOpenChange={(open) => {
+          setDeleteModalOpen(open);
+          if (!open) setSelectedPoll(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete poll?</DialogTitle>
+            <DialogDescription>
+              {selectedPoll
+                ? `This will permanently delete "${selectedPoll.title}".`
+                : 'This will permanently delete this poll.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteModalOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void deletePoll()}
+              disabled={!selectedPoll || deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete Poll'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

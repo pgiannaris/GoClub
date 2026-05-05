@@ -232,7 +232,13 @@ const Sidebar: React.FC<
   }, [clearHoverTimers, collapsible, isMobile, lockOpen, open, setOpen]);
 
   React.useEffect(() => {
-    if (collapsible === 'none' || isMobile || !overlayDesktop || !open || lockOpen) {
+    if (
+      collapsible === 'none' ||
+      isMobile ||
+      !overlayDesktop ||
+      !open ||
+      lockOpen
+    ) {
       return;
     }
 
@@ -253,7 +259,15 @@ const Sidebar: React.FC<
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
     };
-  }, [clearHoverTimers, collapsible, isMobile, lockOpen, open, overlayDesktop, setOpen]);
+  }, [
+    clearHoverTimers,
+    collapsible,
+    isMobile,
+    lockOpen,
+    open,
+    overlayDesktop,
+    setOpen,
+  ]);
 
   const setSidebarRef = React.useCallback(
     (node: HTMLDivElement | null) => {
@@ -353,7 +367,7 @@ const Sidebar: React.FC<
       {!overlayDesktop ? (
         <div
           className={cn(
-          'relative w-(--sidebar-width) bg-transparent transition-[width] duration-300 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none',
+            'relative w-(--sidebar-width) bg-transparent transition-[width] duration-300 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none',
             'group-data-[collapsible=offcanvas]:w-0',
             'group-data-[side=right]:rotate-180',
             variant === 'floating' || variant === 'inset'
@@ -365,7 +379,7 @@ const Sidebar: React.FC<
           )}
         />
       ) : null}
-     {/*"This is the CSS for the navbar"*/}
+      {/*"This is the CSS for the navbar"*/}
       <div
         className={cn(
           'fixed inset-y-0 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-300 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none md:flex',
@@ -559,10 +573,7 @@ const SidebarGroup: React.FC<React.ComponentProps<'div'>> = ({
   return (
     <div
       data-sidebar="group"
-      className={cn(
-        'relative flex w-full min-w-0 flex-col p-2',
-        className,
-      )}
+      className={cn('relative flex w-full min-w-0 flex-col p-2', className)}
       {...props}
     />
   );
@@ -578,7 +589,7 @@ const SidebarGroupLabel: React.FC<
     <Comp
       data-sidebar="group-label"
       className={cn(
-        'text-muted-foreground ring-sidebar-ring flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium outline-hidden transition-[margin,opacity,transform] duration-300 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0',
+        'text-muted-foreground ring-sidebar-ring flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium outline-hidden transition-[margin,opacity,transform] duration-300 ease-[cubic-bezier(.22,1,.36,1)] focus-visible:ring-2 motion-reduce:transition-none [&>svg]:size-4 [&>svg]:shrink-0',
         'group-data-[collapsible=icon]:opacity-0',
         className,
       )}
@@ -627,10 +638,7 @@ const SidebarMenu: React.FC<React.ComponentProps<'ul'>> = ({
 }) => (
   <ul
     data-sidebar="menu"
-    className={cn(
-      'flex w-full min-w-0 flex-col gap-1',
-      className,
-    )}
+    className={cn('flex w-full min-w-0 flex-col gap-1', className)}
     {...props}
   />
 );
@@ -642,17 +650,14 @@ const SidebarMenuItem: React.FC<React.ComponentProps<'li'>> = ({
 }) => (
   <li
     data-sidebar="menu-item"
-    className={cn(
-      'group/menu-item relative',
-      className,
-    )}
+    className={cn('group/menu-item relative', className)}
     {...props}
   />
 );
 SidebarMenuItem.displayName = 'SidebarMenuItem';
 
 const sidebarMenuButtonVariants = cva(
-  'peer/menu-button text-sidebar-foreground active:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent/90 data-[active=true]:text-sidebar-accent-foreground data-[active=true]:font-semibold data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground hover:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)] dark:hover:bg-sidebar-accent/40 dark:data-[active=true]:bg-sidebar-accent data-[state=open]:hover:bg-sidebar-accent/55 data-[state=open]:hover:text-sidebar-accent-foreground flex w-full items-center overflow-hidden rounded-sm p-3 pl-2 text-left text-sm outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 transition-[width,height,padding,background-color,color,box-shadow] duration-350 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none group-has-data-[sidebar=menu-action]/menu-item:pr-8 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-5 [&>svg]:shrink-0 data-[active=true]:[&_[data-sidebar=menu-icon]]:bg-sidebar-accent data-[active=true]:[&_[data-sidebar=menu-icon]]:text-sidebar-accent-foreground data-[active=true]:[&_[data-sidebar=menu-icon]]:ring-1 data-[active=true]:[&_[data-sidebar=menu-icon]]:ring-sidebar-border/70',
+  'peer/menu-button text-sidebar-foreground active:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent/90 data-[active=true]:text-sidebar-accent-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent/40 dark:data-[active=true]:bg-sidebar-accent data-[state=open]:hover:bg-sidebar-accent/55 data-[state=open]:hover:text-sidebar-accent-foreground data-[active=true]:[&_[data-sidebar=menu-icon]]:bg-sidebar-accent data-[active=true]:[&_[data-sidebar=menu-icon]]:text-sidebar-accent-foreground flex w-full items-center overflow-hidden rounded-sm p-3 pl-2 text-left text-sm transition-[width,height,padding,background-color,color,box-shadow] duration-350 ease-[cubic-bezier(.22,1,.36,1)] outline-none group-has-data-[sidebar=menu-action]/menu-item:pr-8 hover:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)] focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:font-semibold data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))] motion-reduce:transition-none [&>span:last-child]:truncate [&>svg]:size-5 [&>svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -741,7 +746,7 @@ const SidebarMenuAction: React.FC<
     <Comp
       data-sidebar="menu-action"
       className={cn(
-        'text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground hover:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)] dark:hover:bg-sidebar-accent/45 peer-hover/menu-button:text-sidebar-accent-foreground absolute top-1.5 right-1 flex aspect-square w-6 items-center justify-center rounded-md p-0 outline-hidden transition-[transform,opacity,background-color,color,box-shadow] duration-300 ease-[cubic-bezier(.22,1,.36,1)] motion-reduce:transition-none focus-visible:ring-2 [&>svg]:size-5 [&>svg]:shrink-0',
+        'text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent/45 peer-hover/menu-button:text-sidebar-accent-foreground absolute top-1.5 right-1 flex aspect-square w-6 items-center justify-center rounded-md p-0 outline-hidden transition-[transform,opacity,background-color,color,box-shadow] duration-300 ease-[cubic-bezier(.22,1,.36,1)] hover:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)] focus-visible:ring-2 motion-reduce:transition-none [&>svg]:size-5 [&>svg]:shrink-0',
         // Increases the hit area of the button on mobile.
         'after:absolute after:-inset-2 md:after:hidden',
         'peer-data-[size=sm]/menu-button:top-1',
@@ -848,8 +853,8 @@ const SidebarMenuSubButton: React.FC<
       data-size={size}
       data-active={isActive}
       className={cn(
-        'text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground hover:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)] active:bg-sidebar-accent/90 active:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent/45 [&>svg]:text-sidebar-accent-foreground flex h-8 min-w-0 -translate-x-px items-center overflow-hidden rounded-md px-2 outline-hidden focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-5 [&>svg]:shrink-0',
-        'data-[active=true]:bg-sidebar-accent/90 data-[active=true]:text-sidebar-accent-foreground data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))] dark:data-[active=true]:bg-sidebar-accent',
+        'text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground active:bg-sidebar-accent/90 active:text-sidebar-accent-foreground dark:hover:bg-sidebar-accent/45 [&>svg]:text-sidebar-accent-foreground flex h-8 min-w-0 -translate-x-px items-center overflow-hidden rounded-md px-2 outline-hidden hover:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-5 [&>svg]:shrink-0',
+        'data-[active=true]:bg-sidebar-accent/90 data-[active=true]:text-sidebar-accent-foreground dark:data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border))]',
         size === 'sm' && 'text-xs',
         size === 'md' && 'text-sm',
         className,
@@ -877,8 +882,8 @@ export function SidebarNavigation({
   const labelClassName = cn(
     'min-w-fit flex-1 whitespace-nowrap transition-[opacity,transform] duration-300 ease-[cubic-bezier(.22,1,.36,1)]',
     {
-      'opacity-100 pointer-events-none': !open,
-      'opacity-100 translate-x-0': open,
+      'pointer-events-none opacity-100': !open,
+      'translate-x-0 opacity-100': open,
     },
   );
 
@@ -891,19 +896,21 @@ export function SidebarNavigation({
           return (
             <SidebarSeparator
               key={`divider-${index}`}
-              className="shrink-0 h-[1px] bg-sidebar-border mx-2 w-auto transition-opacity duration-300"
+              className="bg-sidebar-border mx-2 h-[1px] w-auto shrink-0 transition-opacity duration-300"
             />
           );
         }
 
-      if ('children' in item) {
-        const hasLabel =
-          typeof item.label === 'string' ? item.label.trim().length > 0 : true;
-        const shouldShowGroupLabel =
-          hasLabel && !hiddenGroupLabels.has(item.label);
-        const Container = (props: React.PropsWithChildren) => {
-          if (item.collapsible) {
-            return (
+        if ('children' in item) {
+          const hasLabel =
+            typeof item.label === 'string'
+              ? item.label.trim().length > 0
+              : true;
+          const shouldShowGroupLabel =
+            hasLabel && !hiddenGroupLabels.has(item.label);
+          const Container = (props: React.PropsWithChildren) => {
+            if (item.collapsible) {
+              return (
                 <Collapsible
                   defaultOpen={!item.collapsed}
                   className={'group/collapsible'}
@@ -1077,8 +1084,7 @@ export function SidebarNavigation({
                               <ContentContainer>
                                 <If condition={child.children}>
                                   {(children) => (
-                                    <SidebarMenuSub
-                                    >
+                                    <SidebarMenuSub>
                                       {children.map((child) => {
                                         const isActive = isRouteActive(
                                           child.path,
@@ -1086,7 +1092,8 @@ export function SidebarNavigation({
                                           child.end,
                                         );
 
-                                        const linkClassName = 'flex items-center';
+                                        const linkClassName =
+                                          'flex items-center';
                                         const spanClassName = labelClassName;
 
                                         return (
@@ -1101,7 +1108,9 @@ export function SidebarNavigation({
                                               >
                                                 <span
                                                   data-sidebar="menu-icon"
-                                                  className={iconWrapperClassName}
+                                                  className={
+                                                    iconWrapperClassName
+                                                  }
                                                 >
                                                   {child.Icon}
                                                 </span>
@@ -1137,9 +1146,7 @@ export function SidebarNavigation({
               </SidebarGroup>
 
               {!isLast ? (
-                <SidebarSeparator
-                  className="transition-opacity duration-300"
-                />
+                <SidebarSeparator className="transition-opacity duration-300" />
               ) : null}
             </Container>
           );

@@ -42,12 +42,12 @@ export function HomeSidebar(props: {
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              className="hover:bg-transparent hover:text-sidebar-foreground data-[state=open]:hover:bg-transparent data-[state=open]:hover:text-sidebar-foreground"
+              className="hover:!text-sidebar-foreground hover:!bg-transparent hover:!shadow-none"
             >
               <Link className="flex items-center" href="/">
                 <span
                   data-sidebar="menu-icon"
-                  className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted/70 ring-1 ring-border/70 transition-colors dark:bg-sidebar-accent/25 dark:ring-sidebar-border/60"
+                  className="bg-muted/70 ring-border/70 dark:bg-sidebar-accent/25 dark:ring-sidebar-border/60 mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-md ring-1 transition-colors"
                 >
                   <AppLogo
                     href={null}
@@ -57,11 +57,15 @@ export function HomeSidebar(props: {
                   />
                 </span>
 
-                <span className="font-heading min-w-fit text-[1.4rem] font-semibold tracking-tight text-foreground/85 dark:text-white/100">
+                <span className="font-heading text-foreground/85 min-w-fit text-[1.4rem] font-semibold tracking-tight dark:text-white/100">
                   Go
-                  <span className={`relative text-foreground/85 transition-all duration-200 ease-out dark:text-white/100`}>
+                  <span
+                    className={`text-foreground/85 relative transition-all duration-200 ease-out dark:text-white/100`}
+                  >
                     Club
-                    <span className={`absolute -bottom-0.5 left-0 h-[2px] rounded-full bg-blue-500/90 transition-all duration-200 ease-out ${open ? 'w-full' : 'w-0'}`} />
+                    <span
+                      className={`absolute -bottom-0.5 left-0 h-[2px] rounded-full bg-blue-500/90 transition-all duration-200 ease-out ${open ? 'w-full' : 'w-0'}`}
+                    />
                   </span>
                   <span className="text-foreground dark:text-white">!</span>
                 </span>
@@ -69,7 +73,7 @@ export function HomeSidebar(props: {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="mx-auto mt-2 h-px w-9/12 bg-sidebar-border/40" />
+        <div className="bg-sidebar-border/40 mx-auto mt-2 h-px w-9/12" />
       </SidebarHeader>
 
       <SidebarContent>

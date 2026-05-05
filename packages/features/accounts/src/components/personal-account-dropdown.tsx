@@ -10,7 +10,6 @@ import {
   ChevronsUpDown,
   Home,
   LogOut,
-  Settings,
   UserRound,
 } from 'lucide-react';
 
@@ -207,19 +206,6 @@ export function PersonalAccountDropdown({
 
             <span>
               <Trans i18nKey={'common:routes.profile'} />
-            </span>
-          </Link>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem asChild>
-          <Link
-            className={'s-full flex cursor-pointer items-center space-x-2'}
-            href={paths.profileSettings}
-          >
-            <Settings className={'h-5'} />
-
-            <span>
-              <Trans i18nKey={'common:routes.settings'} />
             </span>
           </Link>
         </DropdownMenuItem>

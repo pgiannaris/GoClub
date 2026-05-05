@@ -1,17 +1,46 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import {
   ArrowDown,
   ArrowUp,
+  BarChart2,
+  Calendar,
+  CheckSquare,
+  ChevronRight,
+  ClipboardList,
   Copy,
   ExternalLink,
+  Eye,
+  Globe,
+  GripVertical,
+  Image,
+  Layers,
+  LayoutGrid,
+  Mail,
+  Megaphone,
   Monitor,
+  PanelLeft,
+  Plus,
+  Redo2,
+  Settings2,
   Smartphone,
   Tablet,
   Trash2,
+  Type,
+  Undo2,
+  Users,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,34 +56,116 @@ import {
   DialogTitle,
 } from '@kit/ui/dialog';
 import { Input } from '@kit/ui/input';
+
 import {
+  type Block,
   DEFAULT_PAGE_SETTINGS,
   DEFAULT_SITE_SETTINGS,
-  getPageSpacingStyle,
-  getSiteTheme,
   HERO_ALIGN_OPTIONS,
-  normalizeAccentColor,
   PAGE_BACKGROUND_OPTIONS,
   PAGE_SPACING_OPTIONS,
-  resolvePageSettingsMap,
-  resolveSiteSettings,
+  type PageBlocks,
+  type PageSettings,
   SITE_ACCENT_OPTIONS,
   SITE_RADIUS_OPTIONS,
   SITE_SURFACE_OPTIONS,
-  type Block,
-  type PageBlocks,
-  type PageSettings,
   type SiteContent,
   type SiteSettings,
+  getPageSpacingStyle,
+  getSiteTheme,
+  normalizeAccentColor,
+  resolvePageSettingsMap,
+  resolveSiteSettings,
 } from '~/lib/site-content';
 
-type DeviceMode = 'desktop' | 'tablet' | 'mobile';
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-const DEFAULT_PAGES: {
-  id: string;
-  label: string;
-  defaultBlocks: Block[];
-}[] = [
+type DeviceMode = 'desktop' | 'tablet' | 'mobile';
+type SidebarTab = 'blocks' | 'layers' | 'design';
+
+// ─── Block Library ────────────────────────────────────────────────────────────
+
+const BLOCK_LIBRARY = [
+  {
+    category: 'Content',
+    items: [
+      {
+        type: 'hero',
+        label: 'Hero',
+        icon: Image,
+        description: 'Big headline banner',
+      },
+      {
+        type: 'text',
+        label: 'Text',
+        icon: Type,
+        description: 'Rich text section',
+      },
+      {
+        type: 'features',
+        label: 'Features',
+        icon: LayoutGrid,
+        description: 'Feature cards grid',
+      },
+    ],
+  },
+  {
+    category: 'Club Data',
+    items: [
+      {
+        type: 'announcements',
+        label: 'Announcements',
+        icon: Megaphone,
+        description: 'Latest posts',
+      },
+      {
+        type: 'events',
+        label: 'Events',
+        icon: Calendar,
+        description: 'Upcoming events',
+      },
+      {
+        type: 'members',
+        label: 'Members',
+        icon: Users,
+        description: 'Member roster',
+      },
+      {
+        type: 'polls',
+        label: 'Polls',
+        icon: BarChart2,
+        description: 'Live voting polls',
+      },
+      {
+        type: 'attendance',
+        label: 'Attendance',
+        icon: CheckSquare,
+        description: 'Session records',
+      },
+      {
+        type: 'tasks',
+        label: 'Tasks',
+        icon: ClipboardList,
+        description: 'Open tasks',
+      },
+    ],
+  },
+  {
+    category: 'Other',
+    items: [
+      {
+        type: 'contact',
+        label: 'Contact',
+        icon: Mail,
+        description: 'Contact information',
+      },
+    ],
+  },
+];
+
+// ─── Default Pages ────────────────────────────────────────────────────────────
+
+const DEFAULT_PAGES: { id: string; label: string; defaultBlocks: Block[] }[] = [
   {
     id: 'home',
     label: 'Home',
@@ -93,15 +204,18 @@ const DEFAULT_PAGES: {
         type: 'text',
         id: 'about-1',
         content: {
-          text:
-            'About Our Club\n\nWe bring curious, motivated members together to learn, collaborate, and lead. From weekly meetings to major conferences, our goal is to help every member grow.',
+          text: 'About Our Club\n\nWe bring curious, motivated members together to learn, collaborate, and lead.',
         },
       },
       {
         type: 'features',
         id: 'about-2',
         content: {
-          items: ['Student-led leadership', 'Workshops & training', 'Community outreach'],
+          items: [
+            'Student-led leadership',
+            'Workshops & training',
+            'Community outreach',
+          ],
         },
       },
     ],
@@ -114,14 +228,6 @@ const DEFAULT_PAGES: {
         type: 'events',
         id: 'events-2',
         settings: { limit: 6, showRsvp: true },
-      },
-      {
-        type: 'text',
-        id: 'events-desc',
-        content: {
-          text:
-            "Upcoming Events\n\nSee what's coming next - meetings, workshops, socials, and conferences. Check back often and RSVP early to reserve your spot.",
-        },
       },
     ],
   },
@@ -170,6 +276,17 @@ const DEFAULT_PAGES: {
     ],
   },
   {
+    id: 'tasks',
+    label: 'Tasks',
+    defaultBlocks: [
+      {
+        type: 'tasks',
+        id: 'tasks-1',
+        settings: { limit: 6, showStatus: true },
+      },
+    ],
+  },
+  {
     id: 'contact',
     label: 'Contact',
     defaultBlocks: [
@@ -177,23 +294,19 @@ const DEFAULT_PAGES: {
         type: 'text',
         id: 'contact-1',
         content: {
-          text:
-            "Get in Touch\n\nQuestions or ideas? We'd love to hear from you.\nEmail: hello@goclub.com\nInstagram: @goclub\nDiscord: goclub",
+          text: "Get in Touch\n\nQuestions or ideas? We'd love to hear from you.\nEmail: hello@goclub.com",
         },
       },
     ],
   },
 ];
 
-type PreviewTheme = ReturnType<typeof getSiteTheme>;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const cloneBlock = (block: Block): Block => {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(block);
-  }
-
-  return JSON.parse(JSON.stringify(block));
-};
+const cloneBlock = (block: Block): Block =>
+  typeof structuredClone === 'function'
+    ? structuredClone(block)
+    : JSON.parse(JSON.stringify(block));
 
 const normalizePageId = (value: string) =>
   value
@@ -203,44 +316,19 @@ const normalizePageId = (value: string) =>
     .replace(/(^-|-$)/g, '');
 
 const formatPageLabel = (pageId: string) => {
-  const page = DEFAULT_PAGES.find((item) => item.id === pageId);
-  if (page) {
-    return page.label;
-  }
-
+  const page = DEFAULT_PAGES.find((p) => p.id === pageId);
+  if (page) return page.label;
   return pageId
     .split('-')
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(' ');
 };
 
 const getDefaultPageBlocks = (pageId: string): PageBlocks => {
-  const page = DEFAULT_PAGES.find((item) => item.id === pageId);
-  return page ? page.defaultBlocks.map((block) => cloneBlock(block)) : [];
+  const page = DEFAULT_PAGES.find((p) => p.id === pageId);
+  return page ? page.defaultBlocks.map(cloneBlock) : [];
 };
-
-const getCustomPageBlocks = (): PageBlocks => [
-  {
-    type: 'text',
-    id: crypto.randomUUID(),
-    content: {
-      text: 'Add your page content here...',
-    },
-  },
-];
-
-const sanitizePageBlocks = (blocks: PageBlocks): PageBlocks => {
-  const firstHero = blocks.find((block) => block.type === 'hero');
-  const nonHeroBlocks = blocks.filter((block) => block.type !== 'hero');
-
-  return firstHero ? [firstHero, ...nonHeroBlocks] : nonHeroBlocks;
-};
-
-const sanitizePages = (pages: Record<string, PageBlocks>) =>
-  Object.fromEntries(
-    Object.entries(pages).map(([pageId, blocks]) => [pageId, sanitizePageBlocks(blocks)]),
-  ) as Record<string, PageBlocks>;
 
 const isHeroBlock = (block: Block | null | undefined) => block?.type === 'hero';
 
@@ -250,28 +338,51 @@ const canMoveBlock = (
   direction: 'up' | 'down',
 ) => {
   const block = blocks[index];
-  if (!block || isHeroBlock(block)) {
-    return false;
-  }
-
-  if (direction === 'up') {
-    return index > 0 && !isHeroBlock(blocks[index - 1]);
-  }
-
+  if (!block || isHeroBlock(block)) return false;
+  if (direction === 'up') return index > 0 && !isHeroBlock(blocks[index - 1]);
   return index < blocks.length - 1;
 };
+
+const sanitizePageBlocks = (blocks: PageBlocks): PageBlocks => {
+  const firstHero = blocks.find((b) => b.type === 'hero');
+  const nonHero = blocks.filter((b) => b.type !== 'hero');
+  return firstHero ? [firstHero, ...nonHero] : nonHero;
+};
+
+const sanitizePages = (pages: Record<string, PageBlocks>) =>
+  Object.fromEntries(
+    Object.entries(pages).map(([id, blocks]) => [
+      id,
+      sanitizePageBlocks(blocks),
+    ]),
+  ) as Record<string, PageBlocks>;
+
+const getBlockIcon = (type: string) => {
+  const found = BLOCK_LIBRARY.flatMap((cat) => cat.items).find(
+    (item) => item.type === type,
+  );
+  return found?.icon ?? Layers;
+};
+
+const getBlockLabel = (type: string) => {
+  const found = BLOCK_LIBRARY.flatMap((cat) => cat.items).find(
+    (item) => item.type === type,
+  );
+  return found?.label ?? type;
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function EditorShell({ projectId }: { projectId: string }) {
   const supabase = useSupabase();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<any>(null);
-
-  const [pages, setPages] = useState<{ [key: string]: PageBlocks }>({});
+  const [pages, setPages] = useState<Record<string, PageBlocks>>({});
   const [activePage, setActivePage] = useState<string>('home');
-
   const [showWizard, setShowWizard] = useState(false);
   const [showPageManager, setShowPageManager] = useState(false);
   const [newPageName, setNewPageName] = useState('');
@@ -279,12 +390,16 @@ export function EditorShell({ projectId }: { projectId: string }) {
     'home',
   ]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [siteSettings, setSiteSettings] =
-    useState<SiteSettings>({ ...DEFAULT_SITE_SETTINGS });
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>({
+    ...DEFAULT_SITE_SETTINGS,
+  });
   const [pageSettingsMap, setPageSettingsMap] = useState<
     Record<string, PageSettings>
   >({});
   const [deviceMode, setDeviceMode] = useState<DeviceMode>('desktop');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('blocks');
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const requestedPage = useMemo(
     () => normalizePageId(searchParams?.get('page') ?? ''),
@@ -294,20 +409,13 @@ export function EditorShell({ projectId }: { projectId: string }) {
   useEffect(() => {
     loadProject();
   }, [projectId]);
-
   useEffect(() => {
     setSelectedBlockId(null);
   }, [activePage]);
 
   useEffect(() => {
-    if (loading || showWizard || !requestedPage) {
+    if (loading || showWizard || !requestedPage || requestedPage === activePage)
       return;
-    }
-
-    if (requestedPage === activePage) {
-      return;
-    }
-
     if (!pages[requestedPage]) {
       setPages((prev) => ({
         ...prev,
@@ -318,26 +426,28 @@ export function EditorShell({ projectId }: { projectId: string }) {
         [requestedPage]: prev[requestedPage] ?? { ...DEFAULT_PAGE_SETTINGS },
       }));
     }
-
     setActivePage(requestedPage);
   }, [activePage, loading, pages, requestedPage, showWizard]);
 
   const activeBlocks = pages[activePage] ?? [];
-
   const selectedBlock = useMemo(
-    () => activeBlocks.find((block) => block.id === selectedBlockId) ?? null,
+    () => activeBlocks.find((b) => b.id === selectedBlockId) ?? null,
     [activeBlocks, selectedBlockId],
   );
   const selectedIndex = selectedBlockId
-    ? activeBlocks.findIndex((block) => block.id === selectedBlockId)
+    ? activeBlocks.findIndex((b) => b.id === selectedBlockId)
     : -1;
   const canMoveSelectedUp =
-    selectedIndex >= 0 ? canMoveBlock(activeBlocks, selectedIndex, 'up') : false;
+    selectedIndex >= 0
+      ? canMoveBlock(activeBlocks, selectedIndex, 'up')
+      : false;
   const canMoveSelectedDown =
-    selectedIndex >= 0 ? canMoveBlock(activeBlocks, selectedIndex, 'down') : false;
+    selectedIndex >= 0
+      ? canMoveBlock(activeBlocks, selectedIndex, 'down')
+      : false;
 
   const activePageLabel = useMemo(
-    () => (activePage ? formatPageLabel(activePage) : 'Page'),
+    () => formatPageLabel(activePage),
     [activePage],
   );
   const activePageSettings = useMemo(
@@ -353,18 +463,20 @@ export function EditorShell({ projectId }: { projectId: string }) {
     [activePageSettings],
   );
 
-  const deviceWidthClass =
+  const deviceWidth =
     deviceMode === 'desktop'
-      ? 'max-w-5xl'
+      ? '100%'
       : deviceMode === 'tablet'
-        ? 'max-w-3xl'
-        : 'max-w-sm';
+        ? '768px'
+        : '390px';
 
   const pageIds = useMemo(() => Object.keys(pages), [pages]);
   const availableTemplates = useMemo(
-    () => DEFAULT_PAGES.filter((page) => !pages[page.id]),
+    () => DEFAULT_PAGES.filter((p) => !pages[p.id]),
     [pages],
   );
+
+  // ─── Page Navigation ─────────────────────────────────────────────────────
 
   const setActivePageId = (
     pageId: string,
@@ -372,17 +484,13 @@ export function EditorShell({ projectId }: { projectId: string }) {
   ) => {
     const { sync = true } = options;
     setActivePage(pageId);
-
-    if (!sync) {
-      return;
-    }
-
+    if (!sync) return;
     const params = new URLSearchParams(searchParams?.toString());
-    if (pageId) {
-      params.set('page', pageId);
-    }
+    if (pageId) params.set('page', pageId);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
+
+  // ─── Data ────────────────────────────────────────────────────────────────
 
   const loadProject = async () => {
     try {
@@ -391,32 +499,25 @@ export function EditorShell({ projectId }: { projectId: string }) {
         .select('*')
         .eq('id', projectId)
         .single();
-
       if (error) throw error;
-
       setProject(data);
-
       const content = data.content as SiteContent;
-
       if (content?.pages && Object.keys(content.pages).length > 0) {
         let nextPages = content.pages;
-
         if (requestedPage && !nextPages[requestedPage]) {
           nextPages = {
             ...nextPages,
             [requestedPage]: getDefaultPageBlocks(requestedPage),
           };
         }
-
-        const sanitizedPages = sanitizePages(nextPages);
-
-        setPages(sanitizedPages);
+        const sanitized = sanitizePages(nextPages);
+        setPages(sanitized);
         setSiteSettings(resolveSiteSettings(content.siteSettings));
         setPageSettingsMap(
-          resolvePageSettingsMap(sanitizedPages, content.pageSettings),
+          resolvePageSettingsMap(sanitized, content.pageSettings),
         );
         setActivePage(
-          requestedPage && sanitizedPages[requestedPage] ? requestedPage : 'home',
+          requestedPage && sanitized[requestedPage] ? requestedPage : 'home',
         );
       } else {
         setSiteSettings({ ...DEFAULT_SITE_SETTINGS });
@@ -425,38 +526,18 @@ export function EditorShell({ projectId }: { projectId: string }) {
       }
     } catch (e) {
       console.error(e);
-      toast.error('Failed to load project details');
+      toast.error('Failed to load project');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateSite = async () => {
-    const newPages: { [key: string]: PageBlocks } = {};
-    selectedWizardPages.forEach((pageId) => {
-      newPages[pageId] = getDefaultPageBlocks(pageId);
-    });
-    const sanitizedPages = sanitizePages(newPages);
-    const nextPageSettings = resolvePageSettingsMap(sanitizedPages);
-
-    setPages(sanitizedPages);
-    setSiteSettings({ ...DEFAULT_SITE_SETTINGS });
-    setPageSettingsMap(nextPageSettings);
-    setShowWizard(false);
-    setActivePageId('home');
-    setSelectedBlockId(null);
-    await saveContent(
-      sanitizedPages,
-      { ...DEFAULT_SITE_SETTINGS },
-      nextPageSettings,
-    );
-  };
-
   const saveContent = async (
-    pagesToSave: { [key: string]: PageBlocks },
+    pagesToSave = pages,
     siteSettingsToSave = siteSettings,
     pageSettingsToSave = pageSettingsMap,
   ) => {
+    setSaving(true);
     try {
       const { error } = await (supabase as any)
         .from('projects')
@@ -468,13 +549,127 @@ export function EditorShell({ projectId }: { projectId: string }) {
           },
         })
         .eq('id', projectId);
-
       if (error) throw error;
-      toast.success('Website saved!');
+      toast.success('Changes saved');
     } catch (e) {
       console.error(e);
-      toast.error('Failed to save website');
+      toast.error('Failed to save');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  // ─── Block Operations ─────────────────────────────────────────────────────
+
+  const updateActiveBlocks = (nextBlocks: PageBlocks) => {
+    setPages((prev) => ({
+      ...prev,
+      [activePage]: sanitizePageBlocks(nextBlocks),
+    }));
+  };
+
+  const handleAddBlock = (type: string) => {
+    const newBlock: Block = {
+      type,
+      id: crypto.randomUUID(),
+      content:
+        type === 'hero'
+          ? { title: 'Section Title', subtitle: 'Add a subtitle here.' }
+          : type === 'text'
+            ? { text: 'Add your content here...' }
+            : type === 'features'
+              ? { items: ['Feature 1', 'Feature 2', 'Feature 3'] }
+              : undefined,
+      settings:
+        type === 'announcements'
+          ? { limit: 4, pinnedFirst: true }
+          : type === 'events'
+            ? { limit: 4, showRsvp: true }
+            : type === 'members'
+              ? { limit: 8, layout: 'grid' }
+              : type === 'polls'
+                ? { limit: 3, allowVoting: true }
+                : type === 'attendance'
+                  ? { limit: 4, showCounts: true }
+                  : type === 'tasks'
+                    ? { limit: 6, showStatus: true }
+                    : undefined,
+    };
+
+    if (type === 'hero' && activeBlocks.some((b) => b.type === 'hero')) {
+      toast.error('Only one hero per page');
+      return;
+    }
+
+    const nextBlocks = [...activeBlocks, newBlock];
+    updateActiveBlocks(nextBlocks);
+    setSelectedBlockId(newBlock.id);
+    setSidebarTab('design');
+  };
+
+  const handleUpdateBlock = (nextBlock: Block) => {
+    updateActiveBlocks(
+      activeBlocks.map((b) => (b.id === nextBlock.id ? nextBlock : b)),
+    );
+  };
+
+  const handleDeleteBlock = (blockId: string) => {
+    const target = activeBlocks.find((b) => b.id === blockId);
+    if (isHeroBlock(target)) {
+      toast.error('Hero block cannot be removed');
+      return;
+    }
+    updateActiveBlocks(activeBlocks.filter((b) => b.id !== blockId));
+    if (selectedBlockId === blockId) setSelectedBlockId(null);
+  };
+
+  const handleDuplicateBlock = (blockId: string) => {
+    const index = activeBlocks.findIndex((b) => b.id === blockId);
+    if (index === -1) return;
+    const target = activeBlocks[index];
+    if (!target) return;
+    if (isHeroBlock(target)) {
+      toast.error('Hero cannot be duplicated');
+      return;
+    }
+    const copy = { ...cloneBlock(target), id: crypto.randomUUID() };
+    const next = [...activeBlocks];
+    next.splice(index + 1, 0, copy);
+    updateActiveBlocks(next);
+    setSelectedBlockId(copy.id);
+  };
+
+  const handleMoveBlock = (blockId: string, direction: 'up' | 'down') => {
+    const index = activeBlocks.findIndex((b) => b.id === blockId);
+    if (index === -1 || !canMoveBlock(activeBlocks, index, direction)) return;
+    const nextIndex = direction === 'up' ? index - 1 : index + 1;
+    const next = [...activeBlocks];
+    const [removed] = next.splice(index, 1);
+    if (!removed) return;
+    next.splice(nextIndex, 0, removed);
+    updateActiveBlocks(next);
+  };
+
+  // ─── Page Operations ──────────────────────────────────────────────────────
+
+  const handleCreateSite = async () => {
+    const newPages: Record<string, PageBlocks> = {};
+    selectedWizardPages.forEach((id) => {
+      newPages[id] = getDefaultPageBlocks(id);
+    });
+    const sanitized = sanitizePages(newPages);
+    const nextPageSettings = resolvePageSettingsMap(sanitized);
+    setPages(sanitized);
+    setSiteSettings({ ...DEFAULT_SITE_SETTINGS });
+    setPageSettingsMap(nextPageSettings);
+    setShowWizard(false);
+    setActivePageId('home');
+    setSelectedBlockId(null);
+    await saveContent(
+      sanitized,
+      { ...DEFAULT_SITE_SETTINGS },
+      nextPageSettings,
+    );
   };
 
   const handleAddPage = (pageId: string, blocks?: PageBlocks) => {
@@ -483,15 +678,15 @@ export function EditorShell({ projectId }: { projectId: string }) {
       toast.error('Enter a page name');
       return;
     }
-
     if (pages[normalized]) {
-      toast.error('That page already exists');
+      toast.error('Page already exists');
       return;
     }
-
     setPages((prev) => ({
       ...prev,
-      [normalized]: sanitizePageBlocks(blocks ?? getDefaultPageBlocks(normalized)),
+      [normalized]: sanitizePageBlocks(
+        blocks ?? getDefaultPageBlocks(normalized),
+      ),
     }));
     setPageSettingsMap((prev) => ({
       ...prev,
@@ -507,15 +702,19 @@ export function EditorShell({ projectId }: { projectId: string }) {
       toast.error('Enter a page name');
       return;
     }
-
     if (pages[normalized]) {
-      toast.error('That page already exists');
+      toast.error('Page already exists');
       return;
     }
-
     setPages((prev) => ({
       ...prev,
-      [normalized]: getCustomPageBlocks(),
+      [normalized]: [
+        {
+          type: 'text',
+          id: crypto.randomUUID(),
+          content: { text: 'Add your content...' },
+        },
+      ],
     }));
     setPageSettingsMap((prev) => ({
       ...prev,
@@ -528,12 +727,10 @@ export function EditorShell({ projectId }: { projectId: string }) {
 
   const handleRemovePage = (pageId: string) => {
     if (pageId === 'home') {
-      toast.error('The home page is required');
+      toast.error('Home page is required');
       return;
     }
-
     const remaining = pageIds.filter((id) => id !== pageId);
-
     setPages((prev) => {
       const next = { ...prev };
       delete next[pageId];
@@ -544,60 +741,38 @@ export function EditorShell({ projectId }: { projectId: string }) {
       delete next[pageId];
       return next;
     });
-
-    if (activePage === pageId) {
-      const fallback = remaining[0] ?? 'home';
-      setActivePageId(fallback);
-    }
+    if (activePage === pageId) setActivePageId(remaining[0] ?? 'home');
   };
 
   const handleRenamePage = (pageId: string, nextLabel: string) => {
     const normalized = normalizePageId(nextLabel);
-    if (!normalized || normalized === pageId) {
-      return;
-    }
-
+    if (!normalized || normalized === pageId) return;
     if (pages[normalized]) {
-      toast.error('That page already exists');
+      toast.error('Page already exists');
       return;
     }
-
     setPages((prev) => {
-      const next: { [key: string]: PageBlocks } = {};
+      const next: Record<string, PageBlocks> = {};
       Object.entries(prev).forEach(([id, blocks]) => {
-        if (id === pageId) {
-          next[normalized] = blocks;
-        } else {
-          next[id] = blocks;
-        }
+        next[id === pageId ? normalized : id] = blocks;
       });
       return next;
     });
     setPageSettingsMap((prev) => {
       const next: Record<string, PageSettings> = {};
-      Object.entries(prev).forEach(([id, settings]) => {
-        if (id === pageId) {
-          next[normalized] = settings;
-        } else {
-          next[id] = settings;
-        }
+      Object.entries(prev).forEach(([id, s]) => {
+        next[id === pageId ? normalized : id] = s;
       });
       return next;
     });
-
-    if (activePage === pageId) {
-      setActivePageId(normalized);
-    }
+    if (activePage === pageId) setActivePageId(normalized);
   };
 
   const handleUpdateSiteSettings = <K extends keyof SiteSettings>(
     key: K,
     value: SiteSettings[K],
   ) => {
-    setSiteSettings((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setSiteSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleUpdatePageSettings = <K extends keyof PageSettings>(
@@ -613,205 +788,127 @@ export function EditorShell({ projectId }: { projectId: string }) {
     }));
   };
 
-  const updateActiveBlocks = (nextBlocks: PageBlocks) => {
-    setPages((prev) => ({
-      ...prev,
-      [activePage]: sanitizePageBlocks(nextBlocks),
-    }));
-  };
-
-  const handleUpdateBlock = (nextBlock: Block) => {
-    const nextBlocks = activeBlocks.map((block) =>
-      block.id === nextBlock.id ? nextBlock : block,
-    );
-    updateActiveBlocks(nextBlocks);
-  };
-
-  const handleDeleteBlock = (blockId: string) => {
-    const targetBlock = activeBlocks.find((block) => block.id === blockId);
-    if (isHeroBlock(targetBlock)) {
-      toast.error('The hero stays at the top of the page');
-      return;
-    }
-
-    const nextBlocks = activeBlocks.filter((block) => block.id !== blockId);
-    updateActiveBlocks(nextBlocks);
-
-    if (selectedBlockId === blockId) {
-      setSelectedBlockId(null);
-    }
-  };
-
-  const handleDuplicateBlock = (blockId: string) => {
-    const index = activeBlocks.findIndex((block) => block.id === blockId);
-    if (index === -1) return;
-    const targetBlock = activeBlocks[index];
-    if (!targetBlock) return;
-    if (isHeroBlock(targetBlock)) {
-      toast.error('Only one hero section is allowed');
-      return;
-    }
-
-    const copy = cloneBlock(targetBlock);
-    copy.id = crypto.randomUUID();
-
-    const nextBlocks = [...activeBlocks];
-    nextBlocks.splice(index + 1, 0, copy);
-
-    updateActiveBlocks(nextBlocks);
-    setSelectedBlockId(copy.id);
-  };
-
-  const handleMoveBlock = (blockId: string, direction: 'up' | 'down') => {
-    const index = activeBlocks.findIndex((block) => block.id === blockId);
-    if (index === -1) return;
-    if (!canMoveBlock(activeBlocks, index, direction)) {
-      if (isHeroBlock(activeBlocks[index])) {
-        toast.error('The hero stays pinned to the top');
-      }
-      return;
-    }
-
-    const nextIndex = direction === 'up' ? index - 1 : index + 1;
-
-    const nextBlocks = [...activeBlocks];
-    const [removed] = nextBlocks.splice(index, 1);
-    if (!removed) return;
-    nextBlocks.splice(nextIndex, 0, removed);
-
-    updateActiveBlocks(nextBlocks);
-    setSelectedBlockId(blockId);
-  };
+  // ─── Loading ──────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="flex h-[calc(100vh-64px)] items-center justify-center text-muted-foreground">
-        Loading editor...
+      <div className="flex h-[calc(100vh-64px)] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="border-border border-t-primary h-8 w-8 animate-spin rounded-full border-2" />
+          <span className="text-muted-foreground text-sm">Loading editor…</span>
+        </div>
       </div>
     );
   }
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <div className="flex h-[calc(100vh-64px)] flex-col bg-background text-foreground">
+    <div className="text-foreground flex h-[calc(100vh-64px)] flex-col bg-[#F5F5F5]">
+      {/* ── Wizard ── */}
       <Dialog open={showWizard} onOpenChange={setShowWizard}>
-        <DialogContent className="sm:max-w-xl border-border bg-background text-foreground">
+        <DialogContent className="border-border bg-background sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Let&apos;s build your club website</DialogTitle>
+            <DialogTitle className="text-xl font-semibold">
+              Set up your website
+            </DialogTitle>
             <DialogDescription>
-              Select the pages you want to include in your initial site.
+              Choose which pages to include. You can add more later.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-4">
+          <div className="grid grid-cols-2 gap-2 py-4">
             {DEFAULT_PAGES.map((page) => (
               <label
                 key={page.id}
-                className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 hover:bg-muted/50"
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors ${
+                  selectedWizardPages.includes(page.id)
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border bg-muted/20 hover:bg-muted/40'
+                }`}
               >
                 <Checkbox
-                  id={`page-${page.id}`}
                   checked={selectedWizardPages.includes(page.id)}
                   onCheckedChange={(checked) => {
-                    if (checked) {
-                      setSelectedWizardPages([
-                        ...selectedWizardPages,
-                        page.id,
-                      ]);
-                    } else {
+                    if (checked)
+                      setSelectedWizardPages([...selectedWizardPages, page.id]);
+                    else
                       setSelectedWizardPages(
                         selectedWizardPages.filter((id) => id !== page.id),
                       );
-                    }
                   }}
                   disabled={page.id === 'home'}
                 />
-                <div>
-                  <div className="font-medium text-foreground">
-                    {page.label}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {page.id === 'home'
-                      ? 'Landing hero, announcements, events, roster'
-                      : 'Add structured blocks you can edit later'}
-                  </div>
-                </div>
+                <span className="text-sm font-medium">{page.label}</span>
               </label>
             ))}
           </div>
           <DialogFooter>
-            <Button onClick={handleCreateSite}>Create Website</Button>
+            <Button onClick={handleCreateSite} className="w-full">
+              Create Website
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* ── Page Manager ── */}
       <Dialog open={showPageManager} onOpenChange={setShowPageManager}>
-        <DialogContent className="sm:max-w-2xl border-border bg-background text-foreground">
+        <DialogContent className="border-border bg-background sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Manage Pages</DialogTitle>
-            <DialogDescription>
-              Add, rename, or remove pages from your club website.
-            </DialogDescription>
+            <DialogDescription>Add, rename, or remove pages.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 py-2">
-            <div className="space-y-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
+          <div className="space-y-5 py-2">
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
                 Current Pages
-              </div>
-              <div className="space-y-2">
-                {pageIds.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-                    No pages yet. Add one below.
-                  </div>
-                ) : (
-                  pageIds.map((pageId) => (
-                    <div
-                      key={pageId}
-                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 p-2"
+              </p>
+              <div className="space-y-1.5">
+                {pageIds.map((pageId) => (
+                  <div
+                    key={pageId}
+                    className="border-border bg-muted/20 flex items-center gap-2 rounded-lg border p-2"
+                  >
+                    <Input
+                      defaultValue={formatPageLabel(pageId)}
+                      onBlur={(e) => handleRenamePage(pageId, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                      }}
+                      className="h-8 flex-1 border-0 bg-transparent text-sm focus-visible:ring-0"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        setActivePageId(pageId);
+                        setShowPageManager(false);
+                      }}
                     >
-                      <Input
-                        defaultValue={formatPageLabel(pageId)}
-                        onBlur={(event) =>
-                          handleRenamePage(pageId, event.target.value)
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.currentTarget.blur();
-                          }
-                        }}
-                        className="h-9 flex-1 border-border bg-background text-sm text-foreground"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setActivePageId(pageId);
-                          setShowPageManager(false);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleRemovePage(pageId)}
-                        disabled={pageId === 'home'}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))
-                )}
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive h-8 text-xs"
+                      onClick={() => handleRemovePage(pageId)}
+                      disabled={pageId === 'home'}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
               </div>
             </div>
-
-            <div className="space-y-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Add Page
-              </div>
-              <div className="flex flex-wrap gap-2">
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
+                Add Template
+              </p>
+              <div className="flex flex-wrap gap-1.5">
                 {availableTemplates.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">
-                    All default pages already added.
-                  </div>
+                  <p className="text-muted-foreground text-sm">
+                    All templates added.
+                  </p>
                 ) : (
                   availableTemplates.map((page) => (
                     <Button
@@ -822,22 +919,25 @@ export function EditorShell({ projectId }: { projectId: string }) {
                         handleAddPage(page.id, getDefaultPageBlocks(page.id))
                       }
                     >
-                      Add {page.label}
+                      + {page.label}
                     </Button>
                   ))
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  value={newPageName}
-                  onChange={(event) => setNewPageName(event.target.value)}
-                  placeholder="Custom page name"
-                  className="h-9 flex-1 border-border bg-background text-sm text-foreground placeholder:text-muted-foreground"
-                />
-                <Button size="sm" onClick={handleAddCustomPage}>
-                  Add Page
-                </Button>
-              </div>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newPageName}
+                onChange={(e) => setNewPageName(e.target.value)}
+                placeholder="Custom page name…"
+                className="h-9 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddCustomPage();
+                }}
+              />
+              <Button size="sm" onClick={handleAddCustomPage}>
+                Add
+              </Button>
             </div>
           </div>
           <DialogFooter>
@@ -848,226 +948,723 @@ export function EditorShell({ projectId }: { projectId: string }) {
         </DialogContent>
       </Dialog>
 
-      <header className="border-b border-border bg-background">
-        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Website Editor
-              </div>
-              <h1 className="text-lg font-semibold text-foreground">
-                {project?.name ?? 'Club Website'}
-              </h1>
-            </div>
-            <div className="hidden h-8 w-px bg-border md:block" />
-            <div className="flex flex-wrap gap-2">
-              {pageIds.map((pageId) => (
-                <button
-                  key={pageId}
-                  onClick={() => setActivePageId(pageId)}
-                  className={`rounded-md border px-3 py-1 text-sm transition-colors ${
-                    activePage === pageId
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                  }`}
-                >
-                  {formatPageLabel(pageId)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => setShowPageManager(true)}>
-              Pages
-            </Button>
-            <div className="inline-flex items-center rounded-lg border border-border bg-background p-1 shadow-xs">
-              <DeviceButton
-                active={deviceMode === 'desktop'}
-                onClick={() => setDeviceMode('desktop')}
-                icon={<Monitor className="h-4 w-4" />}
-              />
-              <DeviceButton
-                active={deviceMode === 'tablet'}
-                onClick={() => setDeviceMode('tablet')}
-                icon={<Tablet className="h-4 w-4" />}
-              />
-              <DeviceButton
-                active={deviceMode === 'mobile'}
-                onClick={() => setDeviceMode('mobile')}
-                icon={<Smartphone className="h-4 w-4" />}
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => window.open(`/site/${projectId}`, '_blank')}
-              className="gap-2"
-            >
-              Open site
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Button>
-            <Button onClick={() => saveContent(pages)}>Save Changes</Button>
-          </div>
-        </div>
-      </header>
+      {/* ── Top Bar ── */}
+      <TopBar
+        projectName={project?.name}
+        pageIds={pageIds}
+        activePage={activePage}
+        deviceMode={deviceMode}
+        saving={saving}
+        onPageClick={setActivePageId}
+        onManagePages={() => setShowPageManager(true)}
+        onDeviceChange={setDeviceMode}
+        onPreview={() => window.open(`/site/${projectId}`, '_blank')}
+        onSave={() => saveContent()}
+        leftSidebarOpen={leftSidebarOpen}
+        onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
+      />
 
+      {/* ── Editor Body ── */}
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="border-b border-border bg-muted/30 px-6 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-              <div>
-                Editing <span className="font-medium">{activePageLabel}</span>
-                <span className="ml-2 text-xs uppercase tracking-wide text-muted-foreground/70">
-                  {deviceMode} preview
-                </span>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {activeBlocks.length} section{activeBlocks.length === 1 ? '' : 's'}
-              </div>
+        {/* Left Sidebar */}
+        {leftSidebarOpen && (
+          <LeftSidebar
+            tab={sidebarTab}
+            onTabChange={setSidebarTab}
+            blocks={activeBlocks}
+            selectedBlockId={selectedBlockId}
+            onSelectBlock={setSelectedBlockId}
+            onAddBlock={handleAddBlock}
+          />
+        )}
+
+        {/* Canvas */}
+        <main
+          className="flex flex-1 flex-col overflow-hidden"
+          onClick={() => setSelectedBlockId(null)}
+        >
+          {/* Canvas toolbar */}
+          <div className="flex items-center justify-between border-b border-[#E0E0E0] bg-white px-5 py-2.5">
+            <div className="text-muted-foreground flex items-center gap-2 text-sm">
+              <span className="text-foreground font-medium">
+                {activePageLabel}
+              </span>
+              <span className="text-[#C8C8C8]">/</span>
+              <span>
+                {activeBlocks.length} section
+                {activeBlocks.length !== 1 ? 's' : ''}
+              </span>
             </div>
+            <span className="bg-muted/60 text-muted-foreground rounded-md px-2 py-0.5 text-xs capitalize">
+              {deviceMode}
+            </span>
           </div>
+
+          {/* Scrollable canvas */}
           <div
-            className="flex-1 overflow-y-auto p-6 md:p-8"
-            style={{
-              background: 'rgb(220,220,220)',
-            }}
-            onClick={() => setSelectedBlockId(null)}
+            className="flex-1 overflow-y-auto p-6"
+            style={{ background: '#DCDCDC' }}
           >
-            <div className={`mx-auto w-full ${deviceWidthClass}`}>
+            <div
+              className="mx-auto transition-all duration-300"
+              style={{ width: deviceWidth, maxWidth: '100%' }}
+            >
+              {/* Device chrome */}
+              {deviceMode !== 'desktop' && (
+                <div className="mb-2 flex items-center justify-center gap-2">
+                  <div className="h-1 w-10 rounded-full bg-[#B0B0B0]" />
+                </div>
+              )}
               <div
-                className="overflow-hidden bg-background"
+                className="overflow-hidden bg-white"
                 style={{
-                  borderRadius: '0px',
-                  boxShadow: 'none',
+                  boxShadow: '0 4px 32px rgba(0,0,0,0.10)',
+                  minHeight: 520,
+                  background: previewTheme.surface,
+                  borderRadius: deviceMode !== 'desktop' ? 16 : 4,
                 }}
               >
-                <div
-                  className="min-h-[520px] overflow-hidden"
-                  style={{
-                    borderRadius: '0px',
-                    background: previewTheme.surface,
-                  }}
-                >
-                  {activePageSettings.showPageHeader && (
-                    <PageHeaderPreview
-                      pageLabel={activePageLabel}
-                      intro={activePageSettings.intro}
-                      theme={previewTheme}
-                    />
-                  )}
+                {activePageSettings.showPageHeader && (
+                  <PageHeaderPreview
+                    pageLabel={activePageLabel}
+                    intro={activePageSettings.intro}
+                    theme={previewTheme}
+                  />
+                )}
 
-                  {activeBlocks.length === 0 ? (
-                    <div className="p-8 md:p-10">
-                      <div
-                        className="rounded-xl border border-dashed px-6 py-10 text-center"
-                        style={{
-                          borderColor: previewTheme.border,
-                          background: previewTheme.surface,
-                        }}
-                      >
-                        <div className="text-lg font-semibold text-slate-900">
-                          This page is empty
-                        </div>
-                        <div className="mt-2 text-sm text-slate-600">
-                          This template does not include editable sections on this page yet.
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {activeBlocks.map((block, index) => (
-                        <BlockRenderer
-                          key={block.id}
-                          block={block}
-                          selected={block.id === selectedBlockId}
-                          canMoveUp={canMoveBlock(activeBlocks, index, 'up')}
-                          canMoveDown={canMoveBlock(activeBlocks, index, 'down')}
-                          onSelect={() => setSelectedBlockId(block.id)}
-                          onChange={handleUpdateBlock}
-                          onDelete={() => handleDeleteBlock(block.id)}
-                          onDuplicate={() => handleDuplicateBlock(block.id)}
-                          onMoveUp={() => handleMoveBlock(block.id, 'up')}
-                          onMoveDown={() => handleMoveBlock(block.id, 'down')}
-                          heroAlign={siteSettings.heroAlign}
-                          theme={previewTheme}
-                          sectionSpacingStyle={sectionSpacingStyle}
-                        />
-                      ))}
-                    </>
-                  )}
-                </div>
+                {activeBlocks.length === 0 ? (
+                  <EmptyCanvas onAddBlock={() => setSidebarTab('blocks')} />
+                ) : (
+                  activeBlocks.map((block, index) => (
+                    <BlockRenderer
+                      key={block.id}
+                      block={block}
+                      selected={block.id === selectedBlockId}
+                      canMoveUp={canMoveBlock(activeBlocks, index, 'up')}
+                      canMoveDown={canMoveBlock(activeBlocks, index, 'down')}
+                      onSelect={(e) => {
+                        e.stopPropagation();
+                        setSelectedBlockId(block.id);
+                        setSidebarTab('design');
+                      }}
+                      onChange={handleUpdateBlock}
+                      onDelete={() => handleDeleteBlock(block.id)}
+                      onDuplicate={() => handleDuplicateBlock(block.id)}
+                      onMoveUp={() => handleMoveBlock(block.id, 'up')}
+                      onMoveDown={() => handleMoveBlock(block.id, 'down')}
+                      heroAlign={siteSettings.heroAlign}
+                      theme={previewTheme}
+                      sectionSpacingStyle={sectionSpacingStyle}
+                    />
+                  ))
+                )}
+
+                {/* Add section below */}
+                {activeBlocks.length > 0 && (
+                  <AddSectionButton onClick={() => setSidebarTab('blocks')} />
+                )}
               </div>
             </div>
           </div>
         </main>
 
-        <aside className="w-[22rem] shrink-0 border-l border-border bg-background">
-          <div className="border-b border-border p-4">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Inspector
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">
-              Design Controls
-            </h3>
-          </div>
-          <div className="h-[calc(100%-96px)] overflow-y-auto p-4">
-            <EditorInspector
-              pageLabel={activePageLabel}
-              blockCount={activeBlocks.length}
-              block={selectedBlock}
-              siteSettings={siteSettings}
-              pageSettings={activePageSettings}
-              onUpdate={handleUpdateBlock}
-              onUpdateSiteSettings={handleUpdateSiteSettings}
-              onUpdatePageSettings={handleUpdatePageSettings}
-              onDelete={
-                selectedBlock && !isHeroBlock(selectedBlock)
-                  ? () => handleDeleteBlock(selectedBlock.id)
-                  : undefined
-              }
-              onDuplicate={
-                selectedBlock && !isHeroBlock(selectedBlock)
-                  ? () => handleDuplicateBlock(selectedBlock.id)
-                  : undefined
-              }
-              onMoveUp={
-                selectedBlock && canMoveSelectedUp
-                  ? () => handleMoveBlock(selectedBlock.id, 'up')
-                  : undefined
-              }
-              onMoveDown={
-                selectedBlock && canMoveSelectedDown
-                  ? () => handleMoveBlock(selectedBlock.id, 'down')
-                  : undefined
-              }
-            />
-          </div>
-        </aside>
+        {/* Right Inspector */}
+        <RightInspector
+          pageLabel={activePageLabel}
+          blockCount={activeBlocks.length}
+          block={selectedBlock}
+          siteSettings={siteSettings}
+          pageSettings={activePageSettings}
+          onUpdate={handleUpdateBlock}
+          onUpdateSiteSettings={handleUpdateSiteSettings}
+          onUpdatePageSettings={handleUpdatePageSettings}
+          onDelete={
+            selectedBlock && !isHeroBlock(selectedBlock)
+              ? () => handleDeleteBlock(selectedBlock.id)
+              : undefined
+          }
+          onDuplicate={
+            selectedBlock && !isHeroBlock(selectedBlock)
+              ? () => handleDuplicateBlock(selectedBlock.id)
+              : undefined
+          }
+          onMoveUp={
+            selectedBlock && canMoveSelectedUp
+              ? () => handleMoveBlock(selectedBlock.id, 'up')
+              : undefined
+          }
+          onMoveDown={
+            selectedBlock && canMoveSelectedDown
+              ? () => handleMoveBlock(selectedBlock.id, 'down')
+              : undefined
+          }
+        />
       </div>
     </div>
   );
 }
 
-function DeviceButton({
-  active,
-  onClick,
-  icon,
+// ─── Top Bar ──────────────────────────────────────────────────────────────────
+
+function TopBar({
+  projectName,
+  pageIds,
+  activePage,
+  deviceMode,
+  saving,
+  onPageClick,
+  onManagePages,
+  onDeviceChange,
+  onPreview,
+  onSave,
+  leftSidebarOpen,
+  onToggleLeftSidebar,
 }: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
+  projectName?: string;
+  pageIds: string[];
+  activePage: string;
+  deviceMode: DeviceMode;
+  saving: boolean;
+  onPageClick: (id: string) => void;
+  onManagePages: () => void;
+  onDeviceChange: (mode: DeviceMode) => void;
+  onPreview: () => void;
+  onSave: () => void;
+  leftSidebarOpen: boolean;
+  onToggleLeftSidebar: () => void;
+}) {
+  return (
+    <header className="z-20 flex h-14 items-center border-b border-[#E0E0E0] bg-white px-4">
+      {/* Left */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onToggleLeftSidebar}
+          className="text-muted-foreground hover:bg-muted flex h-8 w-8 items-center justify-center rounded-lg transition"
+          title="Toggle sidebar"
+        >
+          <PanelLeft className="h-4 w-4" />
+        </button>
+        <div className="bg-border h-5 w-px" />
+        <div className="flex items-center gap-1.5">
+          <Globe className="text-muted-foreground h-4 w-4" />
+          <span className="text-foreground text-sm font-semibold">
+            {projectName ?? 'Website'}
+          </span>
+        </div>
+      </div>
+
+      {/* Center — page tabs */}
+      <div className="flex flex-1 items-center justify-center gap-1 overflow-x-auto px-4">
+        {pageIds.map((pageId) => (
+          <button
+            key={pageId}
+            onClick={() => onPageClick(pageId)}
+            className={`rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors ${
+              activePage === pageId
+                ? 'text-foreground bg-[#F0F0F0] font-medium'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {formatPageLabel(pageId)}
+          </button>
+        ))}
+        <button
+          onClick={onManagePages}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground ml-1 flex h-7 w-7 items-center justify-center rounded-lg transition"
+          title="Manage pages"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Right */}
+      <div className="flex items-center gap-2">
+        {/* Device switcher */}
+        <div className="border-border bg-muted/40 flex items-center rounded-lg border p-0.5">
+          {(
+            [
+              ['desktop', Monitor],
+              ['tablet', Tablet],
+              ['mobile', Smartphone],
+            ] as const
+          ).map(([mode, Icon]) => (
+            <button
+              key={mode}
+              onClick={() => onDeviceChange(mode)}
+              className={`flex h-7 w-8 items-center justify-center rounded-md transition ${
+                deviceMode === mode
+                  ? 'text-foreground bg-white shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+        <div className="bg-border h-5 w-px" />
+        <button
+          onClick={onPreview}
+          className="border-border bg-background text-muted-foreground hover:text-foreground flex h-8 items-center gap-1.5 rounded-lg border px-3 text-sm transition"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          Preview
+        </button>
+        <Button
+          onClick={onSave}
+          size="sm"
+          disabled={saving}
+          className="h-8 px-4 text-sm"
+        >
+          {saving ? 'Saving…' : 'Publish'}
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+// ─── Left Sidebar ─────────────────────────────────────────────────────────────
+
+function LeftSidebar({
+  tab,
+  onTabChange,
+  blocks,
+  selectedBlockId,
+  onSelectBlock,
+  onAddBlock,
+}: {
+  tab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
+  blocks: PageBlocks;
+  selectedBlockId: string | null;
+  onSelectBlock: (id: string) => void;
+  onAddBlock: (type: string) => void;
+}) {
+  return (
+    <aside className="flex w-64 shrink-0 flex-col border-r border-[#E0E0E0] bg-white">
+      {/* Tab bar */}
+      <div className="flex border-b border-[#E0E0E0]">
+        {(['blocks', 'layers'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => onTabChange(t)}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium capitalize transition ${
+              tab === t
+                ? 'border-primary text-primary border-b-2'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t === 'blocks' ? (
+              <Plus className="h-3.5 w-3.5" />
+            ) : (
+              <Layers className="h-3.5 w-3.5" />
+            )}
+            {t === 'blocks' ? 'Add' : 'Layers'}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {tab === 'blocks' && (
+          <div className="space-y-5 p-3">
+            {BLOCK_LIBRARY.map((category) => (
+              <div key={category.category}>
+                <p className="text-muted-foreground mb-2 px-1 text-[10px] font-semibold tracking-widest uppercase">
+                  {category.category}
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {category.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.type}
+                        onClick={() => onAddBlock(item.type)}
+                        className="group hover:border-primary/30 hover:bg-primary/5 flex flex-col items-center gap-1.5 rounded-xl border border-[#EBEBEB] bg-[#FAFAFA] p-3 text-center transition hover:shadow-sm"
+                      >
+                        <div className="group-hover:ring-primary/30 flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-black/5 transition">
+                          <Icon className="text-muted-foreground group-hover:text-primary h-4 w-4" />
+                        </div>
+                        <span className="text-foreground text-[11px] leading-tight font-medium">
+                          {item.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'layers' && (
+          <div className="p-2">
+            {blocks.length === 0 ? (
+              <div className="text-muted-foreground p-4 text-center text-xs">
+                No sections yet. Add blocks to get started.
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {blocks.map((block) => {
+                  const Icon = getBlockIcon(block.type);
+                  return (
+                    <button
+                      key={block.id}
+                      onClick={() => onSelectBlock(block.id)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition ${
+                        selectedBlockId === block.id
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                    >
+                      <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1 truncate text-xs font-medium capitalize">
+                        {getBlockLabel(block.type)}
+                      </span>
+                      {isHeroBlock(block) && (
+                        <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold tracking-wide text-amber-700 uppercase">
+                          Hero
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+// ─── Right Inspector ──────────────────────────────────────────────────────────
+
+function RightInspector({
+  pageLabel,
+  blockCount,
+  block,
+  siteSettings,
+  pageSettings,
+  onUpdate,
+  onUpdateSiteSettings,
+  onUpdatePageSettings,
+  onDelete,
+  onDuplicate,
+  onMoveUp,
+  onMoveDown,
+}: {
+  pageLabel: string;
+  blockCount: number;
+  block: Block | null;
+  siteSettings: SiteSettings;
+  pageSettings: PageSettings;
+  onUpdate: (b: Block) => void;
+  onUpdateSiteSettings: <K extends keyof SiteSettings>(
+    key: K,
+    value: SiteSettings[K],
+  ) => void;
+  onUpdatePageSettings: <K extends keyof PageSettings>(
+    key: K,
+    value: PageSettings[K],
+  ) => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}) {
+  return (
+    <aside className="flex w-72 shrink-0 flex-col border-l border-[#E0E0E0] bg-white">
+      <div className="border-b border-[#E0E0E0] px-4 py-3">
+        <p className="text-muted-foreground text-[10px] font-semibold tracking-widest uppercase">
+          Inspector
+        </p>
+        <p className="text-foreground mt-0.5 text-sm font-semibold">
+          {block ? `${getBlockLabel(block.type)} Block` : 'Page Settings'}
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {block ? (
+          <BlockInspector
+            block={block}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onDuplicate={onDuplicate}
+            onMoveUp={onMoveUp}
+            onMoveDown={onMoveDown}
+          />
+        ) : (
+          <PageInspector
+            pageLabel={pageLabel}
+            blockCount={blockCount}
+            siteSettings={siteSettings}
+            pageSettings={pageSettings}
+            onUpdateSiteSettings={onUpdateSiteSettings}
+            onUpdatePageSettings={onUpdatePageSettings}
+          />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function BlockInspector({
+  block,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+  onMoveUp,
+  onMoveDown,
+}: {
+  block: Block;
+  onUpdate: (b: Block) => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+}) {
+  const Icon = getBlockIcon(block.type);
+  return (
+    <div className="divide-y divide-[#F0F0F0]">
+      {/* Block info */}
+      <div className="px-4 py-4">
+        <div className="flex items-center gap-3 rounded-xl border border-[#EBEBEB] bg-[#FAFAFA] p-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-black/5">
+            <Icon className="text-muted-foreground h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-foreground text-sm font-medium capitalize">
+              {getBlockLabel(block.type)}
+            </p>
+            <p className="text-muted-foreground font-mono text-[10px]">
+              {block.id.slice(0, 8)}…
+            </p>
+          </div>
+        </div>
+
+        {isHeroBlock(block) && (
+          <p className="text-muted-foreground mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+            Hero is pinned to the top and cannot be moved or deleted.
+          </p>
+        )}
+      </div>
+
+      {/* Controls */}
+      {!isHeroBlock(block) && (
+        <div className="px-4 py-3">
+          <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-widest uppercase">
+            Controls
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <InspectorActionButton
+              icon={ArrowUp}
+              label="Move up"
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+            />
+            <InspectorActionButton
+              icon={ArrowDown}
+              label="Move down"
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+            />
+            <InspectorActionButton
+              icon={Copy}
+              label="Duplicate"
+              onClick={onDuplicate}
+              disabled={!onDuplicate}
+            />
+            <InspectorActionButton
+              icon={Trash2}
+              label="Delete"
+              onClick={onDelete}
+              disabled={!onDelete}
+              danger
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Settings */}
+      <div className="px-4 py-3">
+        <p className="text-muted-foreground mb-3 text-[10px] font-semibold tracking-widest uppercase">
+          Settings
+        </p>
+        <BlockSettings block={block} onUpdate={onUpdate} />
+      </div>
+    </div>
+  );
+}
+
+function PageInspector({
+  pageLabel,
+  blockCount,
+  siteSettings,
+  pageSettings,
+  onUpdateSiteSettings,
+  onUpdatePageSettings,
+}: {
+  pageLabel: string;
+  blockCount: number;
+  siteSettings: SiteSettings;
+  pageSettings: PageSettings;
+  onUpdateSiteSettings: <K extends keyof SiteSettings>(
+    key: K,
+    value: SiteSettings[K],
+  ) => void;
+  onUpdatePageSettings: <K extends keyof PageSettings>(
+    key: K,
+    value: PageSettings[K],
+  ) => void;
+}) {
+  return (
+    <div className="divide-y divide-[#F0F0F0]">
+      <div className="px-4 py-4">
+        <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-widest uppercase">
+          Page
+        </p>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Name</span>
+            <span className="font-medium">{pageLabel}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Sections</span>
+            <span className="font-medium">{blockCount}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4 px-4 py-4">
+        <p className="text-muted-foreground text-[10px] font-semibold tracking-widest uppercase">
+          Site Style
+        </p>
+        <AccentPickerField
+          label="Accent color"
+          value={siteSettings.accent}
+          onChange={(v) => onUpdateSiteSettings('accent', v)}
+        />
+        <ChoiceField
+          label="Surface"
+          value={siteSettings.surface}
+          options={SITE_SURFACE_OPTIONS}
+          onChange={(v) => onUpdateSiteSettings('surface', v)}
+        />
+        <ChoiceField
+          label="Corner style"
+          value={siteSettings.radius}
+          options={SITE_RADIUS_OPTIONS}
+          onChange={(v) => onUpdateSiteSettings('radius', v)}
+        />
+        <ChoiceField
+          label="Hero align"
+          value={siteSettings.heroAlign}
+          options={HERO_ALIGN_OPTIONS}
+          onChange={(v) => onUpdateSiteSettings('heroAlign', v)}
+        />
+      </div>
+
+      <div className="space-y-4 px-4 py-4">
+        <p className="text-muted-foreground text-[10px] font-semibold tracking-widest uppercase">
+          Page Style
+        </p>
+        <ChoiceField
+          label="Background"
+          value={pageSettings.background}
+          options={PAGE_BACKGROUND_OPTIONS}
+          onChange={(v) => onUpdatePageSettings('background', v)}
+        />
+        <ChoiceField
+          label="Spacing"
+          value={pageSettings.spacing}
+          options={PAGE_SPACING_OPTIONS}
+          onChange={(v) => onUpdatePageSettings('spacing', v)}
+        />
+        <ToggleField
+          label="Show page header"
+          checked={pageSettings.showPageHeader}
+          onChange={(v) => onUpdatePageSettings('showPageHeader', v)}
+        />
+        <TextAreaField
+          label="Page intro"
+          value={pageSettings.intro}
+          rows={3}
+          placeholder="Optional intro text…"
+          onChange={(v) => onUpdatePageSettings('intro', v)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function InspectorActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+  danger,
+}: {
+  icon: any;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  danger?: boolean;
 }) {
   return (
     <button
-      type="button"
       onClick={onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition ${
-        active
-          ? 'bg-primary text-primary-foreground'
-          : 'hover:bg-muted hover:text-foreground'
+      disabled={disabled}
+      className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-medium transition ${
+        disabled
+          ? 'border-border bg-muted/30 text-muted-foreground/40 cursor-not-allowed'
+          : danger
+            ? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
+            : 'border-border bg-background text-foreground hover:bg-muted'
       }`}
-      aria-pressed={active}
     >
-      {icon}
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  );
+}
+
+// ─── Canvas Components ────────────────────────────────────────────────────────
+
+function EmptyCanvas({ onAddBlock }: { onAddBlock: () => void }) {
+  return (
+    <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-10">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed border-[#DCDCDC]">
+        <Plus className="h-6 w-6 text-[#BABABA]" />
+      </div>
+      <div className="text-center">
+        <p className="font-medium text-slate-800">This page is empty</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Add your first block from the sidebar
+        </p>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onAddBlock();
+        }}
+        className="border-border text-foreground rounded-xl border bg-white px-5 py-2 text-sm font-medium shadow-sm transition hover:shadow-md"
+      >
+        + Add a block
+      </button>
+    </div>
+  );
+}
+
+function AddSectionButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="group flex w-full items-center justify-center gap-2 border-t border-dashed border-[#DCDCDC] py-4 text-sm text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+    >
+      <Plus className="h-4 w-4" />
+      Add section
     </button>
   );
 }
@@ -1079,38 +1676,32 @@ function PageHeaderPreview({
 }: {
   pageLabel: string;
   intro: string;
-  theme: PreviewTheme;
+  theme: ReturnType<typeof getSiteTheme>;
 }) {
   return (
-    <section
-      className="border-b px-6 py-10"
+    <div
+      className="border-b px-8 py-10"
       style={{
         background: `linear-gradient(135deg, ${theme.accentMuted}, rgba(255,255,255,0.96))`,
         borderColor: theme.border,
       }}
     >
-      <div
-        className="mb-3 inline-flex rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]"
-        style={{
-          background: theme.accentSoft,
-          color: theme.accentText,
-        }}
+      <span
+        className="mb-3 inline-block rounded-full px-3 py-1 text-[11px] font-semibold tracking-widest uppercase"
+        style={{ background: theme.accentSoft, color: theme.accentText }}
       >
         {pageLabel}
-      </div>
+      </span>
       <h2 className="text-2xl font-semibold text-slate-900">{pageLabel}</h2>
-      {intro ? (
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-          {intro}
-        </p>
-      ) : (
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-          Add a page intro from the inspector to give this page a clearer headline and context.
-        </p>
-      )}
-    </section>
+      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
+        {intro ||
+          'Add a page intro in the inspector to give this page context.'}
+      </p>
+    </div>
   );
 }
+
+// ─── Block Renderer ───────────────────────────────────────────────────────────
 
 function BlockRenderer({
   block,
@@ -1131,14 +1722,14 @@ function BlockRenderer({
   selected: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
-  onSelect: () => void;
+  onSelect: (e: React.MouseEvent) => void;
   onChange: (b: Block) => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   heroAlign: SiteSettings['heroAlign'];
-  theme: PreviewTheme;
+  theme: ReturnType<typeof getSiteTheme>;
   sectionSpacingStyle: CSSProperties;
 }) {
   const content = block.content || {};
@@ -1152,84 +1743,73 @@ function BlockRenderer({
     borderColor: theme.border,
     borderRadius: theme.radius,
   };
-  const tintedSectionStyle: CSSProperties = {
-    ...sectionSpacingStyle,
-    background: theme.accentMuted,
-  };
 
   return (
     <div
-      className={`group relative border-b last:border-0 transition-shadow ${
-        selected ? 'shadow-[0_10px_24px_rgba(15,23,42,0.12)]' : 'hover:ring-2 hover:ring-slate-200'
-      }`}
-      style={
+      className={`group relative cursor-pointer transition-all ${
         selected
-          ? {
-              boxShadow: `0 0 0 2px ${theme.accentRing}, 0 10px 24px rgba(15,23,42,0.12)`,
-            }
-          : undefined
-      }
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect();
-      }}
+          ? 'ring-2 ring-blue-400 ring-inset'
+          : 'hover:ring-2 hover:ring-slate-200 hover:ring-inset'
+      }`}
+      onClick={onSelect}
     >
+      {/* Floating toolbar */}
       <div
-        className={`absolute right-3 top-3 z-10 flex items-center gap-1 rounded-lg border bg-white/90 p-1 shadow-sm transition-opacity ${
-          selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        className={`absolute top-3 right-3 z-10 flex items-center gap-0.5 rounded-xl border border-white/60 bg-white/95 p-1 shadow-lg backdrop-blur-sm transition-all ${
+          selected
+            ? 'translate-y-0 opacity-100'
+            : '-translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100'
         }`}
-        style={{
-          borderColor: theme.border,
-        }}
       >
-        {!isHeroBlock(block) ? (
+        <BlockToolbarLabel type={block.type} />
+        {!isHeroBlock(block) && (
           <>
-            <IconButton
+            <ToolbarBtn
               label="Move up"
               onClick={onMoveUp}
               disabled={!canMoveUp}
             >
-              <ArrowUp className="h-4 w-4" />
-            </IconButton>
-            <IconButton
+              <ArrowUp className="h-3.5 w-3.5" />
+            </ToolbarBtn>
+            <ToolbarBtn
               label="Move down"
               onClick={onMoveDown}
               disabled={!canMoveDown}
             >
-              <ArrowDown className="h-4 w-4" />
-            </IconButton>
-            <IconButton label="Duplicate" onClick={onDuplicate}>
-              <Copy className="h-4 w-4" />
-            </IconButton>
+              <ArrowDown className="h-3.5 w-3.5" />
+            </ToolbarBtn>
+            <ToolbarBtn label="Duplicate" onClick={onDuplicate}>
+              <Copy className="h-3.5 w-3.5" />
+            </ToolbarBtn>
+            <div className="bg-border mx-0.5 h-4 w-px" />
+            <ToolbarBtn
+              label="Delete"
+              onClick={onDelete}
+              className="text-red-500 hover:bg-red-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </ToolbarBtn>
           </>
-        ) : null}
-        <IconButton
-          label="Delete"
-          onClick={onDelete}
-          disabled={isHeroBlock(block)}
-          className="text-red-500 hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 className="h-4 w-4" />
-        </IconButton>
+        )}
       </div>
 
+      {/* ── Hero ── */}
       {block.type === 'hero' && (
         <div
-          className={`px-12 ${heroAlign === 'left' ? 'text-left' : 'text-center'}`}
+          className={`px-10 ${heroAlign === 'left' ? 'text-left' : 'text-center'}`}
           style={{
             ...sectionSpacingStyle,
             background: `linear-gradient(135deg, ${theme.accentMuted}, rgba(255,255,255,0.98))`,
           }}
         >
-          <div className={heroAlign === 'left' ? 'mx-0 max-w-3xl' : 'mx-auto max-w-3xl'}>
+          <div
+            className={heroAlign === 'left' ? 'max-w-3xl' : 'mx-auto max-w-3xl'}
+          >
             <div
-              className="mb-4 inline-flex rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]"
-              style={{
-                background: theme.accentSoft,
-                color: theme.accentText,
-              }}
+              className="mb-4 inline-flex rounded-full px-3 py-1 text-[11px] font-semibold tracking-widest uppercase"
+              style={{ background: theme.accentSoft, color: theme.accentText }}
             >
-              Welcome section
+              Welcome
             </div>
             <input
               value={content.title ?? ''}
@@ -1239,7 +1819,7 @@ function BlockRenderer({
                   content: { ...content, title: e.target.value },
                 })
               }
-              className="mb-4 w-full bg-transparent text-4xl font-semibold text-slate-900 outline-none placeholder:text-slate-400 md:text-5xl"
+              className="mb-3 block w-full bg-transparent text-4xl font-bold text-slate-900 outline-none placeholder:text-slate-400 md:text-5xl"
               placeholder="Hero title"
             />
             <input
@@ -1250,31 +1830,30 @@ function BlockRenderer({
                   content: { ...content, subtitle: e.target.value },
                 })
               }
-              className="w-full bg-transparent text-lg text-slate-600 outline-none placeholder:text-slate-400 md:text-xl"
-              placeholder="Hero subtitle"
+              className="block w-full bg-transparent text-lg text-slate-500 outline-none placeholder:text-slate-400"
+              placeholder="Subtitle"
             />
             <div
-              className={`mt-8 flex flex-wrap gap-3 ${
-                heroAlign === 'left' ? 'justify-start' : 'justify-center'
-              }`}
+              className={`mt-8 flex flex-wrap gap-3 ${heroAlign === 'left' ? '' : 'justify-center'}`}
             >
-              <div
-                className="rounded-lg px-5 py-2 text-sm font-semibold text-white"
+              <span
+                className="rounded-xl px-5 py-2.5 text-sm font-semibold text-white"
                 style={{ background: theme.accent }}
               >
                 Primary action
-              </div>
-              <div
-                className="rounded-lg border px-5 py-2 text-sm font-semibold text-slate-700"
+              </span>
+              <span
+                className="rounded-xl border px-5 py-2.5 text-sm font-semibold text-slate-700"
                 style={cardStyle}
               >
-                Secondary action
-              </div>
+                Secondary
+              </span>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Text ── */}
       {block.type === 'text' && (
         <div className="px-8" style={sectionSpacingStyle}>
           <textarea
@@ -1285,34 +1864,36 @@ function BlockRenderer({
                 content: { ...content, text: e.target.value },
               })
             }
-            className="min-h-[160px] w-full resize-none bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
-            placeholder="Write your content..."
+            className="min-h-[140px] w-full resize-none bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
+            placeholder="Write your content…"
           />
         </div>
       )}
 
+      {/* ── Features ── */}
       {block.type === 'features' && (
         <div
-          className="grid grid-cols-1 gap-4 px-8 md:grid-cols-3"
+          className="grid gap-4 px-8 md:grid-cols-3"
           style={sectionSpacingStyle}
         >
           {featureItems.map((item: string, i: number) => (
             <div
               key={i}
-              className="p-4 shadow-sm"
+              className="rounded-xl border p-5 shadow-sm"
               style={cardStyle}
             >
+              <div
+                className="mb-3 h-8 w-8 rounded-lg"
+                style={{ background: theme.accentSoft }}
+              />
               <input
                 value={item}
                 onChange={(e) => {
-                  const newItems = [...featureItems];
-                  newItems[i] = e.target.value;
-                  onChange({
-                    ...block,
-                    content: { ...content, items: newItems },
-                  });
+                  const next = [...featureItems];
+                  next[i] = e.target.value;
+                  onChange({ ...block, content: { ...content, items: next } });
                 }}
-                className="w-full bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
+                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none"
                 placeholder={`Feature ${i + 1}`}
               />
             </div>
@@ -1320,131 +1901,192 @@ function BlockRenderer({
         </div>
       )}
 
+      {/* ── Announcements ── */}
       {block.type === 'announcements' && (
-        <div className="px-8" style={tintedSectionStyle}>
-          <SectionHeader
-            title="Announcements"
-            hint="Shows published announcements from Supabase"
-            accentColor={theme.accentText}
-          />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[...Array(Math.min(settings.limit || 3, 3)).keys()].map((i) => (
-              <div
-                key={i}
-                className="p-4 shadow-sm"
-                style={cardStyle}
-              >
-                <div className="mb-2 h-4 w-20 rounded bg-slate-200" />
-                <div className="mb-1 h-3 w-32 rounded bg-slate-200" />
-                <div className="h-3 w-24 rounded bg-slate-100" />
-              </div>
-            ))}
+        <DataBlock
+          title="Announcements"
+          hint="Live data from your club"
+          theme={theme}
+          sectionSpacingStyle={sectionSpacingStyle}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Array.from({ length: Math.min(settings.limit ?? 3, 3) }).map(
+              (_, i) => (
+                <SkeletonCard key={i} theme={theme} cardStyle={cardStyle}>
+                  <SkeletonLine w="60%" h={14} />
+                  <SkeletonLine w="80%" h={11} className="mt-2" />
+                  <SkeletonLine w="40%" h={11} className="mt-1" />
+                </SkeletonCard>
+              ),
+            )}
           </div>
-        </div>
+        </DataBlock>
       )}
 
+      {/* ── Events ── */}
       {block.type === 'events' && (
-        <div className="px-8" style={tintedSectionStyle}>
-          <SectionHeader
-            title="Events"
-            hint="Upcoming events feed"
-            accentColor={theme.accentText}
-          />
+        <DataBlock
+          title="Events"
+          hint="Upcoming events feed"
+          theme={theme}
+          sectionSpacingStyle={sectionSpacingStyle}
+        >
           <div className="space-y-2">
-            {[...Array(Math.min(settings.limit || 4, 4)).keys()].map((i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-4 shadow-sm"
-                style={cardStyle}
-              >
-                <div>
-                  <div className="mb-2 h-4 w-32 rounded bg-slate-200" />
-                  <div className="h-3 w-24 rounded bg-slate-100" />
-                </div>
-                {settings.showRsvp && (
+            {Array.from({ length: Math.min(settings.limit ?? 4, 4) }).map(
+              (_, i) => (
+                <SkeletonCard key={i} theme={theme} cardStyle={cardStyle} row>
+                  <div className="flex-1 space-y-1">
+                    <SkeletonLine w="50%" h={13} />
+                    <SkeletonLine w="35%" h={11} />
+                  </div>
+                  {settings.showRsvp && (
+                    <div
+                      className="h-8 w-20 rounded-lg"
+                      style={{ background: theme.accentSoft }}
+                    />
+                  )}
+                </SkeletonCard>
+              ),
+            )}
+          </div>
+        </DataBlock>
+      )}
+
+      {/* ── Members ── */}
+      {block.type === 'members' && (
+        <DataBlock
+          title="Members"
+          hint="Public roster"
+          theme={theme}
+          sectionSpacingStyle={sectionSpacingStyle}
+        >
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            {Array.from({ length: Math.min(settings.limit ?? 6, 8) }).map(
+              (_, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col items-center gap-2 rounded-xl border p-4"
+                  style={cardStyle}
+                >
                   <div
-                    className="h-8 w-20 rounded"
+                    className="h-10 w-10 rounded-full"
                     style={{ background: theme.accentSoft }}
                   />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {block.type === 'members' && (
-        <div className="px-8" style={tintedSectionStyle}>
-          <SectionHeader
-            title="Members"
-            hint="Public roster cards"
-            accentColor={theme.accentText}
-          />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {[...Array(Math.min(settings.limit || 6, 8)).keys()].map((i) => (
-              <div
-                key={i}
-                className="h-20 shadow-sm"
-                style={cardStyle}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {block.type === 'polls' && (
-        <div className="px-8" style={tintedSectionStyle}>
-          <SectionHeader
-            title="Polls & Voting"
-            hint="Live polls feed"
-            accentColor={theme.accentText}
-          />
-          <div className="space-y-2">
-            {[...Array(Math.min(settings.limit || 2, 3)).keys()].map((i) => (
-              <div
-                key={i}
-                className="p-4 shadow-sm"
-                style={cardStyle}
-              >
-                <div className="mb-2 h-4 w-28 rounded bg-slate-200" />
-                <div className="space-y-2">
-                  <div className="h-3 w-40 rounded bg-slate-100" />
-                  <div className="h-3 w-32 rounded bg-slate-100" />
+                  <SkeletonLine w="70%" h={10} />
                 </div>
-              </div>
-            ))}
+              ),
+            )}
           </div>
-        </div>
+        </DataBlock>
       )}
 
-      {block.type === 'attendance' && (
-        <div className="px-8" style={tintedSectionStyle}>
-          <SectionHeader
-            title="Attendance"
-            hint="Recent attendance sessions"
-            accentColor={theme.accentText}
-          />
-          <div className="space-y-2">
-            {[...Array(Math.min(settings.limit || 2, 3)).keys()].map((i) => (
-              <div
-                key={i}
-                className="flex justify-between p-4 shadow-sm"
-                style={cardStyle}
-              >
-                <div className="h-4 w-32 rounded bg-slate-200" />
-                {settings.showCounts && (
-                  <div className="h-4 w-16 rounded bg-slate-100" />
-                )}
-              </div>
-            ))}
+      {/* ── Polls ── */}
+      {block.type === 'polls' && (
+        <DataBlock
+          title="Polls & Voting"
+          hint="Live polls"
+          theme={theme}
+          sectionSpacingStyle={sectionSpacingStyle}
+        >
+          <div className="space-y-3">
+            {Array.from({ length: Math.min(settings.limit ?? 2, 3) }).map(
+              (_, i) => (
+                <SkeletonCard key={i} theme={theme} cardStyle={cardStyle}>
+                  <SkeletonLine w="55%" h={13} />
+                  <div className="mt-3 space-y-2">
+                    {[70, 45, 30].map((pct, j) => (
+                      <div key={j} className="flex items-center gap-3">
+                        <SkeletonLine w="30%" h={11} />
+                        <div
+                          className="flex-1 rounded-full"
+                          style={{ height: 6, background: theme.border }}
+                        >
+                          <div
+                            className="rounded-full"
+                            style={{
+                              width: `${pct}%`,
+                              height: '100%',
+                              background: theme.accentSoft,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </SkeletonCard>
+              ),
+            )}
           </div>
-        </div>
+        </DataBlock>
+      )}
+
+      {/* ── Attendance ── */}
+      {block.type === 'attendance' && (
+        <DataBlock
+          title="Attendance"
+          hint="Recent sessions"
+          theme={theme}
+          sectionSpacingStyle={sectionSpacingStyle}
+        >
+          <div className="space-y-2">
+            {Array.from({ length: Math.min(settings.limit ?? 3, 4) }).map(
+              (_, i) => (
+                <SkeletonCard key={i} theme={theme} cardStyle={cardStyle} row>
+                  <SkeletonLine w="45%" h={13} />
+                  {settings.showCounts && <SkeletonLine w="15%" h={11} />}
+                </SkeletonCard>
+              ),
+            )}
+          </div>
+        </DataBlock>
+      )}
+
+      {/* ── Tasks ── */}
+      {block.type === 'tasks' && (
+        <DataBlock
+          title="Tasks"
+          hint="Open project tasks"
+          theme={theme}
+          sectionSpacingStyle={sectionSpacingStyle}
+        >
+          <div className="space-y-2">
+            {Array.from({ length: Math.min(settings.limit ?? 5, 6) }).map(
+              (_, i) => (
+                <SkeletonCard key={i} theme={theme} cardStyle={cardStyle} row>
+                  <div
+                    className="h-4 w-4 rounded border"
+                    style={{ borderColor: theme.border }}
+                  />
+                  <SkeletonLine w="55%" h={13} className="flex-1" />
+                  {settings.showStatus && (
+                    <div
+                      className="h-5 w-16 rounded-full"
+                      style={{ background: theme.accentSoft }}
+                    />
+                  )}
+                </SkeletonCard>
+              ),
+            )}
+          </div>
+        </DataBlock>
       )}
     </div>
   );
 }
 
-function IconButton({
+// ─── Block Canvas Helpers ─────────────────────────────────────────────────────
+
+function BlockToolbarLabel({ type }: { type: string }) {
+  const Icon = getBlockIcon(type);
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-slate-600">
+      <Icon className="h-3 w-3" />
+      {getBlockLabel(type)}
+    </div>
+  );
+}
+
+function ToolbarBtn({
   label,
   onClick,
   disabled,
@@ -1459,19 +2101,16 @@ function IconButton({
 }) {
   return (
     <button
-      type="button"
-      aria-label={label}
+      title={label}
       disabled={disabled}
-      onClick={(event) => {
-        event.stopPropagation();
-        if (!disabled) {
-          onClick();
-        }
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onClick();
       }}
-      className={`flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition ${
+      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
         disabled
-          ? 'cursor-not-allowed opacity-40'
-          : 'hover:bg-muted hover:text-foreground'
+          ? 'cursor-not-allowed opacity-30'
+          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
       } ${className ?? ''}`}
     >
       {children}
@@ -1479,191 +2118,97 @@ function IconButton({
   );
 }
 
-function EditorInspector({
-  pageLabel,
-  blockCount,
-  block,
-  siteSettings,
-  pageSettings,
-  onUpdate,
-  onUpdateSiteSettings,
-  onUpdatePageSettings,
-  onDelete,
-  onDuplicate,
-  onMoveUp,
-  onMoveDown,
+function DataBlock({
+  title,
+  hint,
+  theme,
+  sectionSpacingStyle,
+  children,
 }: {
-  pageLabel: string;
-  blockCount: number;
-  block: Block | null;
-  siteSettings: SiteSettings;
-  pageSettings: PageSettings;
-  onUpdate: (block: Block) => void;
-  onUpdateSiteSettings: <K extends keyof SiteSettings>(
-    key: K,
-    value: SiteSettings[K],
-  ) => void;
-  onUpdatePageSettings: <K extends keyof PageSettings>(
-    key: K,
-    value: PageSettings[K],
-  ) => void;
-  onDelete: (() => void) | undefined;
-  onDuplicate: (() => void) | undefined;
-  onMoveUp: (() => void) | undefined;
-  onMoveDown: (() => void) | undefined;
+  title: string;
+  hint?: string;
+  theme: ReturnType<typeof getSiteTheme>;
+  sectionSpacingStyle: CSSProperties;
+  children: ReactNode;
 }) {
   return (
-    <div className="space-y-4">
-      <InspectorSection title="Page Overview">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Page</span>
-          <span className="font-medium text-foreground">
-            {pageLabel}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Blocks</span>
-          <span className="font-medium text-foreground">
-            {blockCount}
-          </span>
-        </div>
-      </InspectorSection>
-
-      <InspectorSection title="Site Style">
-        <AccentPickerField
-          label="Accent"
-          value={siteSettings.accent}
-          onChange={(value) => onUpdateSiteSettings('accent', value)}
-        />
-        <ChoiceField
-          label="Surface"
-          value={siteSettings.surface}
-          options={SITE_SURFACE_OPTIONS}
-          onChange={(value) => onUpdateSiteSettings('surface', value)}
-        />
-        <ChoiceField
-          label="Corners"
-          value={siteSettings.radius}
-          options={SITE_RADIUS_OPTIONS}
-          onChange={(value) => onUpdateSiteSettings('radius', value)}
-        />
-        <ChoiceField
-          label="Hero alignment"
-          value={siteSettings.heroAlign}
-          options={HERO_ALIGN_OPTIONS}
-          onChange={(value) => onUpdateSiteSettings('heroAlign', value)}
-        />
-      </InspectorSection>
-
-      <InspectorSection title="Page Style">
-        <ChoiceField
-          label="Background"
-          value={pageSettings.background}
-          options={PAGE_BACKGROUND_OPTIONS}
-          onChange={(value) => onUpdatePageSettings('background', value)}
-        />
-        <ChoiceField
-          label="Spacing"
-          value={pageSettings.spacing}
-          options={PAGE_SPACING_OPTIONS}
-          onChange={(value) => onUpdatePageSettings('spacing', value)}
-        />
-        <ToggleField
-          label="Show page header"
-          checked={pageSettings.showPageHeader}
-          onChange={(value) => onUpdatePageSettings('showPageHeader', value)}
-        />
-        <TextAreaField
-          label="Page intro"
-          value={pageSettings.intro}
-          rows={4}
-          placeholder="Optional page intro shown above the sections."
-          onChange={(value) => onUpdatePageSettings('intro', value)}
-        />
-      </InspectorSection>
-
-      {block ? (
-        <>
-          <InspectorSection title="Selected Block">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Type</span>
-              <span className="font-medium capitalize text-foreground">
-                {block.type}
-              </span>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {block.id}
-            </div>
-            {isHeroBlock(block) ? (
-              <p className="pt-2 text-sm text-muted-foreground">
-                The hero is locked to the top of the page and cannot be duplicated or removed.
-              </p>
-            ) : null}
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onMoveUp}
-                disabled={!onMoveUp}
-              >
-                Move up
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onMoveDown}
-                disabled={!onMoveDown}
-              >
-                Move down
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onDuplicate}
-                disabled={!onDuplicate}
-              >
-                Duplicate
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={onDelete}
-                disabled={!onDelete}
-              >
-                Delete
-              </Button>
-            </div>
-          </InspectorSection>
-
-          <InspectorSection title="Settings">
-            <BlockSettings block={block} onUpdate={onUpdate} />
-          </InspectorSection>
-        </>
-      ) : (
-        <InspectorSection title="Selection">
-          <p className="text-sm text-muted-foreground">
-            Click a block on the canvas to edit its settings and controls.
+    <div
+      className="px-8"
+      style={{ ...sectionSpacingStyle, background: theme.accentMuted }}
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p
+            className="text-xs font-semibold tracking-widest uppercase"
+            style={{ color: theme.accentText }}
+          >
+            {title}
           </p>
-        </InspectorSection>
-      )}
+          {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+        </div>
+        <span className="rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+          Live data
+        </span>
+      </div>
+      {children}
     </div>
   );
 }
+
+function SkeletonCard({
+  theme,
+  cardStyle,
+  row,
+  children,
+}: {
+  theme: ReturnType<typeof getSiteTheme>;
+  cardStyle: CSSProperties;
+  row?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 shadow-sm ${row ? 'flex items-center gap-4' : ''}`}
+      style={cardStyle}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SkeletonLine({
+  w,
+  h,
+  className,
+}: {
+  w: string;
+  h: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-md bg-slate-200 ${className ?? ''}`}
+      style={{ width: w, height: h }}
+    />
+  );
+}
+
+// ─── Inspector Field Components ───────────────────────────────────────────────
 
 function BlockSettings({
   block,
   onUpdate,
 }: {
   block: Block;
-  onUpdate: (block: Block) => void;
+  onUpdate: (b: Block) => void;
 }) {
   const settings = block.settings || {};
 
-  if (block.type === 'announcements') {
+  if (block.type === 'announcements')
     return (
       <div className="space-y-3">
         <NumberField
-          label="Items"
+          label="Items to show"
           value={settings.limit ?? 6}
           min={1}
           max={12}
@@ -1680,13 +2225,12 @@ function BlockSettings({
         />
       </div>
     );
-  }
 
-  if (block.type === 'events') {
+  if (block.type === 'events')
     return (
       <div className="space-y-3">
         <NumberField
-          label="Items"
+          label="Items to show"
           value={settings.limit ?? 6}
           min={1}
           max={10}
@@ -1703,13 +2247,12 @@ function BlockSettings({
         />
       </div>
     );
-  }
 
-  if (block.type === 'members') {
+  if (block.type === 'members')
     return (
       <div className="space-y-3">
         <NumberField
-          label="Items"
+          label="Items to show"
           value={settings.limit ?? 12}
           min={3}
           max={48}
@@ -1730,13 +2273,12 @@ function BlockSettings({
         />
       </div>
     );
-  }
 
-  if (block.type === 'polls') {
+  if (block.type === 'polls')
     return (
       <div className="space-y-3">
         <NumberField
-          label="Items"
+          label="Items to show"
           value={settings.limit ?? 3}
           min={1}
           max={5}
@@ -1753,13 +2295,12 @@ function BlockSettings({
         />
       </div>
     );
-  }
 
-  if (block.type === 'attendance') {
+  if (block.type === 'attendance')
     return (
       <div className="space-y-3">
         <NumberField
-          label="Items"
+          label="Items to show"
           value={settings.limit ?? 4}
           min={1}
           max={10}
@@ -1768,7 +2309,7 @@ function BlockSettings({
           }
         />
         <ToggleField
-          label="Show counts"
+          label="Show attendance counts"
           checked={settings.showCounts ?? true}
           onChange={(v) =>
             onUpdate({ ...block, settings: { ...settings, showCounts: v } })
@@ -1776,53 +2317,33 @@ function BlockSettings({
         />
       </div>
     );
-  }
 
-  return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-      Edit text directly on the canvas for this block.
-    </div>
-  );
-}
-
-function InspectorSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-3 rounded-lg border border-border bg-muted/25 p-4">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        {title}
+  if (block.type === 'tasks')
+    return (
+      <div className="space-y-3">
+        <NumberField
+          label="Items to show"
+          value={settings.limit ?? 6}
+          min={1}
+          max={20}
+          onChange={(v) =>
+            onUpdate({ ...block, settings: { ...settings, limit: v } })
+          }
+        />
+        <ToggleField
+          label="Show status badge"
+          checked={settings.showStatus ?? true}
+          onChange={(v) =>
+            onUpdate({ ...block, settings: { ...settings, showStatus: v } })
+          }
+        />
       </div>
-      {children}
-    </div>
-  );
-}
+    );
 
-function SectionHeader({
-  title,
-  hint,
-  accentColor,
-}: {
-  title: string;
-  hint?: string;
-  accentColor?: string;
-}) {
   return (
-    <div className="mb-3 flex items-center justify-between">
-      <div>
-        <div
-          className="text-xs uppercase tracking-wide"
-          style={{ color: accentColor ?? '#64748b' }}
-        >
-          {title}
-        </div>
-        {hint && <p className="text-xs text-slate-400">{hint}</p>}
-      </div>
-    </div>
+    <p className="border-border bg-muted/20 text-muted-foreground rounded-xl border border-dashed p-3 text-xs">
+      Edit this block's content directly on the canvas.
+    </p>
   );
 }
 
@@ -1833,130 +2354,88 @@ function AccentPickerField({
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const normalizedValue = normalizeAccentColor(value);
-  const [hexInput, setHexInput] = useState(normalizedValue);
-
+  const normalized = normalizeAccentColor(value);
+  const [hexInput, setHexInput] = useState(normalized);
   useEffect(() => {
-    if (!open) {
-      setHexInput(normalizedValue);
-    }
-  }, [normalizedValue, open]);
+    if (!open) setHexInput(normalized);
+  }, [normalized, open]);
 
   return (
     <>
-      <div className="space-y-2">
-        <div className="text-sm text-foreground">{label}</div>
+      <div className="space-y-1.5">
+        <label className="text-muted-foreground text-xs font-medium">
+          {label}
+        </label>
         <button
-          type="button"
           onClick={() => setOpen(true)}
-          className="flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-left transition hover:border-primary/30"
+          className="border-border bg-background hover:border-primary/40 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 transition"
         >
-          <span className="flex items-center gap-3">
-            <span
-              className="h-5 w-5 rounded-md border border-black/10"
-              style={{ background: normalizedValue }}
-            />
-            <span className="text-sm text-foreground">{normalizedValue}</span>
+          <span
+            className="h-5 w-5 rounded-md border border-black/10 shadow-sm"
+            style={{ background: normalized }}
+          />
+          <span className="text-foreground flex-1 text-left text-sm">
+            {normalized}
           </span>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Edit
-          </span>
+          <ChevronRight className="text-muted-foreground h-3.5 w-3.5" />
         </button>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md border-border bg-background text-foreground">
+        <DialogContent className="border-border bg-background sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Accent Color</DialogTitle>
             <DialogDescription>
-              Pick a preset or choose your own custom brand color.
+              Choose a preset or pick a custom color.
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-5 py-2">
-            <div className="space-y-2">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Presets
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {SITE_ACCENT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      setHexInput(option.color);
-                      onChange(option.color);
-                    }}
-                    className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
-                      normalizeAccentColor(value) === option.color
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border bg-background hover:border-primary/30'
-                    }`}
-                  >
-                    <span
-                      className="h-5 w-5 rounded-md border border-black/10"
-                      style={{ background: option.color }}
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-foreground">
-                        {option.label}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {option.color}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Custom Color
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={normalizedValue}
-                  onChange={(event) => {
-                    setHexInput(event.target.value);
-                    onChange(event.target.value);
+            <div className="grid grid-cols-3 gap-2">
+              {SITE_ACCENT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setHexInput(opt.color);
+                    onChange(opt.color);
                   }}
-                  className="h-11 w-14 cursor-pointer rounded-md border border-border bg-background p-1"
-                />
-                <Input
-                  value={hexInput}
-                  onChange={(event) => setHexInput(event.target.value)}
-                  placeholder="#4189e2"
-                  className="border-border bg-background text-foreground"
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <span className="text-sm text-muted-foreground">
-                  Preview
-                </span>
-                <span
-                  className="inline-flex rounded-md px-3 py-1 text-sm font-medium text-white"
-                  style={{ background: normalizeAccentColor(hexInput) }}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition ${
+                    normalized === opt.color
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/30'
+                  }`}
                 >
-                  Button
-                </span>
-              </div>
+                  <span
+                    className="h-4 w-4 rounded-md"
+                    style={{ background: opt.color }}
+                  />
+                  <span className="text-xs font-medium">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={normalized}
+                onChange={(e) => {
+                  setHexInput(e.target.value);
+                  onChange(e.target.value);
+                }}
+                className="border-border h-10 w-12 cursor-pointer rounded-lg border p-1"
+              />
+              <Input
+                value={hexInput}
+                onChange={(e) => setHexInput(e.target.value)}
+                placeholder="#4189e2"
+                className="flex-1"
+              />
             </div>
           </div>
-
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setHexInput(normalizedValue);
-                setOpen(false);
-              }}
-            >
-              Close
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
             </Button>
             <Button
               onClick={() => {
@@ -1964,7 +2443,7 @@ function AccentPickerField({
                 setOpen(false);
               }}
             >
-              Apply Color
+              Apply
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1982,24 +2461,25 @@ function ChoiceField<T extends string>({
   label: string;
   value: T;
   options: { value: T; label: string }[];
-  onChange: (value: T) => void;
+  onChange: (v: T) => void;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="text-sm text-foreground">{label}</div>
-      <div className="grid grid-cols-2 gap-2">
-        {options.map((option) => (
+    <div className="space-y-1.5">
+      <label className="text-muted-foreground text-xs font-medium">
+        {label}
+      </label>
+      <div className="grid grid-cols-2 gap-1.5">
+        {options.map((opt) => (
           <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={`rounded-lg border px-3 py-2 text-sm transition ${
-              value === option.value
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`rounded-xl border py-2 text-xs font-medium transition ${
+              value === opt.value
                 ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border bg-background text-foreground hover:border-primary/30'
+                : 'border-border bg-background text-foreground hover:border-primary/30 hover:bg-muted'
             }`}
           >
-            {option.label}
+            {opt.label}
           </button>
         ))}
       </div>
@@ -2021,21 +2501,36 @@ function NumberField({
   onChange: (v: number) => void;
 }) {
   return (
-    <label className="space-y-1 text-sm text-foreground">
-      <div>{label}</div>
-      <Input
-        type="number"
-        className="border-border bg-background text-foreground"
-        value={value}
-        min={min}
-        max={max}
-        onChange={(e) => {
-          const next = Number(e.target.value);
-          const safe = Number.isFinite(next) ? next : min;
-          onChange(Math.min(max, Math.max(min, safe)));
-        }}
-      />
-    </label>
+    <div className="space-y-1.5">
+      <label className="text-muted-foreground text-xs font-medium">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onChange(Math.max(min, value - 1))}
+          className="border-border bg-background text-foreground hover:bg-muted flex h-8 w-8 items-center justify-center rounded-lg border transition"
+        >
+          −
+        </button>
+        <Input
+          type="number"
+          value={value}
+          min={min}
+          max={max}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
+          }}
+          className="flex-1 text-center"
+        />
+        <button
+          onClick={() => onChange(Math.min(max, value + 1))}
+          className="border-border bg-background text-foreground hover:bg-muted flex h-8 w-8 items-center justify-center rounded-lg border transition"
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2050,19 +2545,21 @@ function TextAreaField({
   value: string;
   rows?: number;
   placeholder?: string;
-  onChange: (value: string) => void;
+  onChange: (v: string) => void;
 }) {
   return (
-    <label className="space-y-1 text-sm text-foreground">
-      <div>{label}</div>
+    <div className="space-y-1.5">
+      <label className="text-muted-foreground text-xs font-medium">
+        {label}
+      </label>
       <textarea
         rows={rows}
         value={value}
         placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+        onChange={(e) => onChange(e.target.value)}
+        className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-primary/20 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2"
       />
-    </label>
+    </div>
   );
 }
 
@@ -2076,9 +2573,16 @@ function ToggleField({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-foreground">
-      <Checkbox checked={checked} onCheckedChange={(v) => onChange(Boolean(v))} />
-      <span>{label}</span>
+    <label className="border-border bg-muted/20 flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2.5">
+      <span className="text-foreground text-xs font-medium">{label}</span>
+      <div
+        onClick={() => onChange(!checked)}
+        className={`relative h-5 w-9 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-muted'}`}
+      >
+        <div
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
+        />
+      </div>
     </label>
   );
 }
@@ -2095,12 +2599,14 @@ function SelectField({
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="space-y-1 text-sm text-foreground">
-      <div>{label}</div>
+    <div className="space-y-1.5">
+      <label className="text-muted-foreground text-xs font-medium">
+        {label}
+      </label>
       <select
-        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        className="border-border bg-background text-foreground w-full rounded-xl border px-3 py-2 text-sm"
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -2108,6 +2614,6 @@ function SelectField({
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }

@@ -17,6 +17,7 @@
     "./check-requires-mfa": "./src/check-requires-mfa.ts",
     "./require-user": "./src/require-user.ts",
     "./hooks/*": "./src/hooks/*.ts",
+    "./get-redirect-url": "./src/get-redirect-url.ts",
     "./database": "./src/database.types.ts",
     "./auth": "./src/auth.ts"
   },

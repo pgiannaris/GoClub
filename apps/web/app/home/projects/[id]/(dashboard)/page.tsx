@@ -10,11 +10,11 @@ export const metadata = {
 
 async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUserInServerComponent();
+  await requireUserInServerComponent();
 
   return (
     <PageBody>
-      <ProjectDetailContent user={user} projectId={id} />
+      <ProjectDetailContent projectId={id} />
     </PageBody>
   );
 }

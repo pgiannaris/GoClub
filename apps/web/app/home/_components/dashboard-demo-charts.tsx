@@ -215,7 +215,7 @@ function Chart(
         <Line
           dataKey="value"
           type="natural"
-          stroke="var(--color-desktop)"
+          stroke="var(--primary)"
           strokeWidth={2}
           dot={false}
         />
@@ -629,24 +629,24 @@ export function VisitorsChart() {
               <linearGradient id="fillDesktop" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-desktop)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-desktop)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
               <linearGradient id="fillMobile" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-mobile)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-mobile)"
+                  stopColor="var(--primary)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
@@ -668,7 +668,7 @@ export function VisitorsChart() {
               type="natural"
               fill="url(#fillMobile)"
               fillOpacity={0.4}
-              stroke="var(--color-mobile)"
+              stroke="var(--primary)"
               stackId="a"
             />
             <Area
@@ -676,7 +676,7 @@ export function VisitorsChart() {
               type="natural"
               fill="url(#fillDesktop)"
               fillOpacity={0.4}
-              stroke="var(--color-desktop)"
+              stroke="var(--primary)"
               stackId="a"
             />
           </AreaChart>
@@ -888,7 +888,7 @@ export function PageViewsChart() {
                 />
               }
             />
-            <Bar dataKey={activeChart} fill={`var(--color-${activeChart})`} />
+            <Bar dataKey={activeChart} fill={`var(--primary)`} />
           </BarChart>
         </ChartContainer>
       </CardContent>

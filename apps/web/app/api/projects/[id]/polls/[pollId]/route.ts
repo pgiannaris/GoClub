@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 
 import { getSupabaseServerAdminClient } from '@kit/supabase/server-admin-client';
@@ -125,6 +126,45 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
   }
 
   return NextResponse.json({ poll }, { status: 200 });
+}
+
+export async function DELETE(_request: Request, context: ProjectRouteContext) {
+  const { id: projectId, pollId } = await context.params;
+  const authorization = await authorizeProjectAccess(projectId);
+
+  if ('response' in authorization) {
+    return authorization.response;
+  }
+
+  const { adminClient, role } = authorization;
+
+  if (!canManagePolls(role)) {
+    return NextResponse.json(
+      { error: 'Only owner/admin can manage polls' },
+      { status: 403 },
+    );
+  }
+
+  const existingPoll = await getProjectPollById(adminClient, projectId, pollId);
+  if (!existingPoll) {
+    return NextResponse.json({ error: 'Poll not found' }, { status: 404 });
+  }
+
+  const { error } = await (adminClient as any)
+    .from('polls')
+    .delete()
+    .eq('id', pollId)
+    .eq('project_id', projectId);
+
+  if (error) {
+    console.error('Failed to delete poll', { projectId, pollId, error });
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete poll' },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
 
 async function authorizeProjectAccess(projectId: string) {

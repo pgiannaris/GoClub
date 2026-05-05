@@ -26,11 +26,6 @@ export function AttendancePageShell(props: AttendancePageShellProps) {
       description: 'Select a meeting and mark statuses.',
     },
     {
-      href: `${basePath}/meetings`,
-      label: 'Meetings',
-      description: 'Create and manage meeting records.',
-    },
-    {
       href: `${basePath}/search`,
       label: 'Search',
       description: 'Filter attendance history quickly.',

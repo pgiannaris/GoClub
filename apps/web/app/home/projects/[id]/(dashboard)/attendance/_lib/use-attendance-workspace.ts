@@ -22,6 +22,7 @@ import {
   type CustomAttendee,
   type MemberProfile,
 } from './attendance-utils';
+export type DraftAttendanceStatus = AttendanceStatus | 'unmarked';
 
 type CreateSessionInput = {
   title: string;
@@ -46,8 +47,9 @@ export function useAttendanceWorkspace(
   const [entriesBySession, setEntriesBySession] = useState<Record<string, AttendanceEntry[]>>({});
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso());
   const [customAttendees, setCustomAttendees] = useState<CustomAttendee[]>([]);
-  const [statusByAttendeeKey, setStatusByAttendeeKey] = useState<Record<string, AttendanceStatus>>(
+  const [statusByAttendeeKey, setStatusByAttendeeKey] = useState<Record<string, DraftAttendanceStatus>>(
     {},
   );
 
@@ -61,6 +63,7 @@ export function useAttendanceWorkspace(
     () => sessions.find((session) => session.id === selectedSessionId) ?? null,
     [sessions, selectedSessionId],
   );
+  const isDraftSession = !selectedSession;
 
   const selectedEntries = useMemo(
     () => (selectedSessionId ? entriesBySession[selectedSessionId] ?? [] : []),
@@ -74,7 +77,7 @@ export function useAttendanceWorkspace(
       member_name: member.full_name,
       role: member.role,
       is_roster: true,
-      status: statusByAttendeeKey[memberKey(member.id)] ?? 'absent',
+      status: (statusByAttendeeKey[memberKey(member.id)] ?? 'unmarked') as AttendanceStatus,
     }));
 
     const customRows = customAttendees.map((attendee) => ({
@@ -83,7 +86,7 @@ export function useAttendanceWorkspace(
       member_name: attendee.member_name,
       role: null,
       is_roster: false,
-      status: statusByAttendeeKey[attendee.key] ?? 'absent',
+      status: (statusByAttendeeKey[attendee.key] ?? 'unmarked') as AttendanceStatus,
     }));
 
     return [...rosterRows, ...customRows].sort((a, b) =>
@@ -110,17 +113,20 @@ export function useAttendanceWorkspace(
 
     attendanceRows.forEach((row) => {
       const existingEntries = selectedEntriesByKey.get(row.key) ?? [];
-      const currentStatus = statusByAttendeeKey[row.key] ?? 'absent';
+      const currentStatus = statusByAttendeeKey[row.key] ?? 'unmarked';
 
       if (existingEntries.length === 0) {
-        if (!row.is_roster || currentStatus !== 'absent') {
+        if (!row.is_roster || currentStatus !== 'unmarked') {
           changed.add(row.key);
         }
 
         return;
       }
 
-      if (existingEntries.length > 1 || existingEntries[0]?.status !== currentStatus) {
+      if (
+        currentStatus !== 'unmarked' &&
+        (existingEntries.length > 1 || existingEntries[0]?.status !== currentStatus)
+      ) {
         changed.add(row.key);
       }
     });
@@ -250,6 +256,7 @@ export function useAttendanceWorkspace(
         if (current && nextSessionIds.includes(current)) return current;
         return preferredSessionId;
       });
+      setSelectedDate((current) => current || nextSessions[0]?.meeting_date || todayIso());
     } catch (error) {
       console.error('Failed to load attendance data', error);
       toast.error('Failed to load attendance data');
@@ -262,15 +269,20 @@ export function useAttendanceWorkspace(
     void loadAttendance();
   }, [loadAttendance]);
 
+  useEffect(() => {
+    const match = sessions.find((session) => session.meeting_date === selectedDate);
+    setSelectedSessionId(match?.id ?? null);
+  }, [selectedDate, sessions]);
+
   const resetDraftFromSelectedEntries = useCallback(() => {
-    const nextStatuses: Record<string, AttendanceStatus> = {};
+    const nextStatuses: Record<string, DraftAttendanceStatus> = {};
     const nextCustom = new Map<string, CustomAttendee>();
     const memberIdByName = new Map(
       members.map((member) => [normalizeName(member.full_name), member.id] as const),
     );
 
     members.forEach((member) => {
-      nextStatuses[memberKey(member.id)] = 'absent';
+      nextStatuses[memberKey(member.id)] = selectedSession ? 'absent' : 'unmarked';
     });
 
     selectedEntries.forEach((entry) => {
@@ -297,7 +309,7 @@ export function useAttendanceWorkspace(
     resetDraftFromSelectedEntries();
   }, [resetDraftFromSelectedEntries]);
 
-  const setAttendanceStatus = useCallback((key: string, status: AttendanceStatus) => {
+  const setAttendanceStatus = useCallback((key: string, status: DraftAttendanceStatus) => {
     setStatusByAttendeeKey((prev) => ({ ...prev, [key]: status }));
   }, []);
 
@@ -329,7 +341,7 @@ export function useAttendanceWorkspace(
           a.member_name.localeCompare(b.member_name),
         ),
       );
-      setStatusByAttendeeKey((prev) => ({ ...prev, [key]: 'absent' }));
+      setStatusByAttendeeKey((prev) => ({ ...prev, [key]: 'unmarked' }));
       return true;
     },
     [attendanceRows],
@@ -498,11 +510,8 @@ export function useAttendanceWorkspace(
     [sessions, supabase],
   );
 
-  const saveAttendance = useCallback(async () => {
-    if (!selectedSession) {
-      toast.error('Select a meeting first');
-      return false;
-    }
+  const saveAttendance = useCallback(
+    async (options?: { newSessionTitle?: string }) => {
 
     if (attendanceRows.length === 0) {
       toast.error('No attendees to save');
@@ -518,6 +527,26 @@ export function useAttendanceWorkspace(
 
     try {
       const rowByKey = new Map(attendanceRows.map((row) => [row.key, row] as const));
+      let workingSession = selectedSession;
+      if (!workingSession) {
+        const draftTitle = options?.newSessionTitle?.trim();
+        const titleForCreate = draftTitle || defaultSessionTitle(selectedDate);
+        const { data: created, error: createError } = await (supabase as any)
+          .from('attendance_sessions')
+          .insert({
+            project_id: projectId,
+            title: titleForCreate,
+            meeting_date: selectedDate,
+            notes: null,
+            is_public: false,
+          })
+          .select('id, project_id, title, meeting_date, notes, is_public, created_at')
+          .single();
+        if (createError) throw createError;
+        workingSession = created as AttendanceSession;
+        setSessions((prev) => [...prev, workingSession!].sort(sortSessionsByDateDesc));
+        setSelectedSessionId(workingSession.id);
+      }
       const entriesToDelete = new Set<string>();
       const payload: Array<{
         session_id: string;
@@ -527,15 +556,18 @@ export function useAttendanceWorkspace(
       }> = [];
 
       attendanceRows.forEach((row) => {
-        const currentStatus = statusByAttendeeKey[row.key] ?? 'absent';
+        const currentStatus = statusByAttendeeKey[row.key] ?? 'unmarked';
         const existingEntries = selectedEntriesByKey.get(row.key) ?? [];
         const primaryExisting = existingEntries[0] ?? null;
 
         if (primaryExisting) {
-          if (primaryExisting.status !== currentStatus || existingEntries.length > 1) {
+          if (
+            currentStatus !== 'unmarked' &&
+            (primaryExisting.status !== currentStatus || existingEntries.length > 1)
+          ) {
             existingEntries.forEach((entry) => entriesToDelete.add(entry.id));
             payload.push({
-              session_id: selectedSession.id,
+              session_id: workingSession.id,
               member_id: row.member_id,
               member_name: row.member_name,
               status: currentStatus,
@@ -546,14 +578,15 @@ export function useAttendanceWorkspace(
         }
 
         const shouldInsert =
-          selectedEntries.length === 0 || !row.is_roster || currentStatus !== 'absent';
+          currentStatus !== 'unmarked' &&
+          (selectedEntries.length === 0 || !row.is_roster || currentStatus !== 'absent');
 
         if (shouldInsert) {
           payload.push({
-            session_id: selectedSession.id,
+            session_id: workingSession.id,
             member_id: row.member_id,
             member_name: row.member_name,
-            status: currentStatus,
+            status: currentStatus as AttendanceStatus,
           });
         }
       });
@@ -568,7 +601,7 @@ export function useAttendanceWorkspace(
         const { error: deleteError } = await (supabase as any)
           .from('attendance_entries')
           .delete()
-          .eq('session_id', selectedSession.id)
+          .eq('session_id', workingSession.id)
           .in('id', deleteIds);
 
         if (deleteError) throw deleteError;
@@ -579,20 +612,46 @@ export function useAttendanceWorkspace(
           .from('attendance_entries')
           .insert(payload);
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          const isStatusConstraintError =
+            insertError?.code === '23514' &&
+            String(insertError?.message ?? '').includes(
+              'attendance_entries_status_check',
+            );
+          const hasLateStatus = payload.some((row) => row.status === 'late');
+
+          if (isStatusConstraintError && hasLateStatus) {
+            const normalizedPayload = payload.map((row) => ({
+              ...row,
+              status: row.status === 'late' ? 'present' : row.status,
+            }));
+
+            const { error: retryError } = await (supabase as any)
+              .from('attendance_entries')
+              .insert(normalizedPayload);
+
+            if (retryError) throw retryError;
+
+            toast.warning(
+              'Your database does not support "Late" yet. Late entries were saved as Present.',
+            );
+          } else {
+            throw insertError;
+          }
+        }
       }
 
       const { data, error: refreshError } = await (supabase as any)
         .from('attendance_entries')
         .select('id, session_id, member_id, member_name, status, created_at')
-        .eq('session_id', selectedSession.id)
+        .eq('session_id', workingSession.id)
         .order('created_at', { ascending: false });
 
       if (refreshError) throw refreshError;
 
       setEntriesBySession((prev) => ({
         ...prev,
-        [selectedSession.id]: ((data ?? []) as Array<
+        [workingSession.id]: ((data ?? []) as Array<
           Omit<AttendanceEntry, 'status'> & { status: unknown }
         >).map((entry) => ({
           ...entry,
@@ -609,15 +668,19 @@ export function useAttendanceWorkspace(
     } finally {
       setSavingAttendance(false);
     }
-  }, [
-    attendanceRows,
-    hasUnsavedChanges,
-    selectedEntries.length,
-    selectedEntriesByKey,
-    selectedSession,
-    statusByAttendeeKey,
-    supabase,
-  ]);
+    },
+    [
+      attendanceRows,
+      hasUnsavedChanges,
+      selectedEntries.length,
+      selectedEntriesByKey,
+      selectedSession,
+      selectedDate,
+      projectId,
+      statusByAttendeeKey,
+      supabase,
+    ],
+  );
 
   return {
     members,
@@ -625,6 +688,9 @@ export function useAttendanceWorkspace(
     entriesBySession,
     selectedSessionId,
     setSelectedSessionId,
+    selectedDate,
+    setSelectedDate,
+    isDraftSession,
     selectedSession,
     attendanceRows,
     loading,

@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { useSearchParams } from 'next/navigation';
+
+import { AccountDangerZone } from '@kit/accounts/components';
 import { toast } from 'sonner';
 
-import { useSupabase } from '@kit/supabase/hooks/use-supabase';
 import { Button } from '@kit/ui/button';
 import {
   Card,
@@ -15,40 +17,69 @@ import {
 } from '@kit/ui/card';
 import { Input } from '@kit/ui/input';
 import { Label } from '@kit/ui/label';
+import { Textarea } from '@kit/ui/textarea';
+
+type ProjectSettingsPayload = {
+  name: string;
+  description: string;
+  status: 'active' | 'paused' | 'archived' | 'coming_up' | 'restoring';
+};
 
 export function ProjectSettingsContent({ projectId }: { projectId: string }) {
-  const supabase = useSupabase();
+  const searchParams = useSearchParams();
+  const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<ProjectSettingsPayload['status']>('active');
+  const [canManage, setCanManage] = useState(false);
+
+  const focusTarget = searchParams.get('focus');
 
   useEffect(() => {
-    loadProjectSettings();
+    void loadProjectSettings();
   }, [projectId]);
+
+  useEffect(() => {
+    if (loading || focusTarget !== 'description') return;
+
+    const target = descriptionRef.current;
+    if (!target) return;
+
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.focus();
+      target.setSelectionRange(target.value.length, target.value.length);
+    });
+  }, [focusTarget, loading]);
 
   const loadProjectSettings = async () => {
     setLoading(true);
-    try {
-      const { data, error } = await (supabase as any)
-        .from('projects')
-        .select('*')
-        .eq('id', projectId)
-        .single();
 
-      if (error) {
-        console.error('Error loading project:', error);
-        toast.error('Failed to load project settings');
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/settings`, {
+        credentials: 'include',
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        settings?: ProjectSettingsPayload;
+        permissions?: {
+          canManage?: boolean;
+        };
+      };
+
+      if (!response.ok || !payload.settings) {
+        toast.error(payload.error || 'Failed to load project settings');
         return;
       }
 
-      if (data) {
-        setProject(data);
-        setWebhookUrl(data.webhook_url || '');
-        setApiKey(data.api_key || '');
-      }
+      setName(payload.settings.name || '');
+      setDescription(payload.settings.description || '');
+      setStatus(payload.settings.status || 'active');
+      setCanManage(Boolean(payload.permissions?.canManage));
     } catch (error) {
       console.error('Error:', error);
       toast.error('Something went wrong');
@@ -59,18 +90,27 @@ export function ProjectSettingsContent({ projectId }: { projectId: string }) {
 
   const handleSaveSettings = async () => {
     setSaving(true);
-    try {
-      const { error } = await (supabase as any)
-        .from('projects')
-        .update({
-          webhook_url: webhookUrl,
-          api_key: apiKey,
-        })
-        .eq('id', projectId);
 
-      if (error) {
-        console.error('Update error:', error);
-        toast.error('Failed to save settings');
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/settings`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          description,
+          status,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        toast.error(payload.error || 'Failed to save settings');
         return;
       }
 
@@ -84,86 +124,76 @@ export function ProjectSettingsContent({ projectId }: { projectId: string }) {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">Loading...</div>
-    );
-  }
-
-  if (!project) {
-    return (
-      <div className="mx-auto max-w-4xl">
-        <Card className="border-destructive">
-          <CardContent className="pt-6">
-            <p className="text-muted-foreground">Project not found</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <div className="flex items-center justify-center p-8">Loading...</div>;
   }
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your club settings</p>
+        <p className="text-muted-foreground">Manage your club and account settings</p>
       </div>
 
-      {/* API Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>API Configuration</CardTitle>
-          <CardDescription>Configure API keys and webhooks</CardDescription>
+          <CardTitle>Club Details</CardTitle>
+          <CardDescription>Update how your club appears across the app.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="api-key">API Key</Label>
+            <Label htmlFor="club-name">Club Name</Label>
             <Input
-              id="api-key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your API key"
-              type="password"
+              id="club-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Club name"
+              disabled={!canManage}
             />
-            <p className="text-muted-foreground text-xs">
-              Keep this secure and never share it publicly
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="webhook-url">Webhook URL</Label>
-            <Input
-              id="webhook-url"
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://example.com/webhook"
-              type="url"
+            <Label htmlFor="club-description">Description</Label>
+            <Textarea
+              id="club-description"
+              ref={descriptionRef}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe your club"
+              rows={4}
+              disabled={!canManage}
             />
-            <p className="text-muted-foreground text-xs">
-              URL where project events will be sent
-            </p>
           </div>
 
-          <Button onClick={handleSaveSettings} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Settings'}
+          <div className="space-y-2">
+            <Label htmlFor="club-status">Club Status</Label>
+            <select
+              id="club-status"
+              value={status}
+              onChange={(event) => setStatus(event.target.value as ProjectSettingsPayload['status'])}
+              disabled={!canManage}
+              className="border-input bg-background flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-2xs outline-none"
+            >
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+              <option value="archived">archived</option>
+              <option value="coming_up">coming_up</option>
+              <option value="restoring">restoring</option>
+            </select>
+          </div>
+
+          <Button onClick={handleSaveSettings} disabled={saving || !canManage}>
+            {saving ? 'Saving...' : 'Save Settings'}
           </Button>
         </CardContent>
       </Card>
 
-      {/* General Settings (Renamed from Environment) */}
-      <Card>
+      <Card className="border-destructive">
         <CardHeader>
-          <CardTitle>General</CardTitle>
-          <CardDescription>Club details</CardDescription>
+          <CardTitle>Account Deletion</CardTitle>
+          <CardDescription>Permanently delete your account and related access.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Status</p>
-              <p className="text-muted-foreground text-sm capitalize">
-                {project.status || 'active'}
-              </p>
-            </div>
-          </div>
+        <CardContent>
+          <AccountDangerZone />
         </CardContent>
       </Card>
     </div>

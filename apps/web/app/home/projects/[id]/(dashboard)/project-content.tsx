@@ -1,19 +1,27 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
 
 import {
-  Area,
+  AlertTriangle,
+  ArrowUpRight,
+  Check,
+  CheckCircle2,
+  ExternalLink,
+  Pencil,
+  TrendingDown,
+  TrendingUp,
+  X,
+} from 'lucide-react';
+import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
   ComposedChart,
   Line,
-  Pie,
-  PieChart,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -54,6 +62,8 @@ import {
   formatReadableDate,
   getAttendanceWeight,
 } from './attendance/_lib/attendance-utils';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ProjectRecord = {
   id: string;
@@ -138,7 +148,7 @@ type AttendanceChartRow = {
   rate: number;
 };
 
-type ActivityChartRow = {
+type ActivityTrendRow = {
   key: string;
   month: string;
   fullLabel: string;
@@ -148,7 +158,24 @@ type ActivityChartRow = {
   total: number;
 };
 
-type GrowthChartRow = {
+type AttendanceMixRow = {
+  key: string;
+  label: string;
+  count: number;
+  fill: string;
+};
+
+type AttendanceStatusTimelineRow = {
+  session: string;
+  fullLabel: string;
+  present: number;
+  late: number;
+  excused: number;
+  absent: number;
+  total: number;
+};
+
+type RosterGrowthRow = {
   key: string;
   month: string;
   fullLabel: string;
@@ -157,28 +184,14 @@ type GrowthChartRow = {
   totalPeople: number;
 };
 
-type PipelineRow = {
+type AnnouncementBreakdownRow = {
   key: string;
   label: string;
-  value: number;
+  count: number;
   fill: string;
 };
 
-type AnnouncementStatusRow = {
-  key: string;
-  label: string;
-  value: number;
-  fill: string;
-};
-
-type WeeklyEventsRow = {
-  key: string;
-  week: string;
-  fullLabel: string;
-  publicEvents: number;
-  privateEvents: number;
-  total: number;
-};
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMPTY_DASHBOARD_DATA: DashboardData = {
   projectMembers: [],
@@ -191,57 +204,81 @@ const EMPTY_DASHBOARD_DATA: DashboardData = {
   attendanceEntries: [],
 };
 
+const BLUE = {
+  50: '#eff6ff',
+  100: '#dbeafe',
+  200: '#bfdbfe',
+  300: '#93c5fd',
+  400: '#60a5fa',
+  500: '#3b82f6',
+  600: '#2563eb',
+  700: '#1d4ed8',
+  800: '#1e40af',
+  900: '#1e3a8a',
+} as const;
+
+const STATUS_COLORS = {
+  present: '#16a34a',
+  late: '#d97706',
+  excused: '#2563eb',
+  absent: '#dc2626',
+} as const;
+
 const attendancePerformanceChartConfig = {
-  attendees: { label: 'Attendees', color: 'var(--chart-2)' },
-  rate: { label: 'Attendance Rate', color: 'var(--primary)' },
+  rate: { label: 'Attendance Rate', color: BLUE[500] },
 } satisfies ChartConfig;
 
-const activityChartConfig = {
-  announcements: { label: 'Announcements', color: 'var(--primary)' },
-  events: { label: 'Events', color: 'var(--chart-2)' },
-  sessions: { label: 'Meetings', color: 'var(--chart-4)' },
+const activityTrendChartConfig = {
+  announcements: { label: 'Announcements', color: BLUE[400] },
+  events: { label: 'Events', color: BLUE[600] },
+  sessions: { label: 'Meetings', color: BLUE[800] },
+  total: { label: 'Total', color: BLUE[500] },
 } satisfies ChartConfig;
 
-const growthChartConfig = {
-  totalPeople: { label: 'People', color: 'var(--primary)' },
-  students: { label: 'Students', color: 'var(--chart-2)' },
-  collaborators: { label: 'Collaborators', color: 'var(--chart-4)' },
+const attendanceMixChartConfig = {
+  count: { label: 'Entries', color: BLUE[500] },
 } satisfies ChartConfig;
 
-const pipelineChartConfig = {
-  value: { label: 'Count', color: 'var(--primary)' },
+const attendanceStatusTimelineChartConfig = {
+  present: { label: 'Present', color: STATUS_COLORS.present },
+  late: { label: 'Late', color: STATUS_COLORS.late },
+  excused: { label: 'Excused', color: STATUS_COLORS.excused },
+  absent: { label: 'Absent', color: STATUS_COLORS.absent },
 } satisfies ChartConfig;
 
-const announcementStatusChartConfig = {
-  published: { label: 'Published', color: 'var(--primary)' },
-  draft: { label: 'Drafts', color: 'var(--chart-5)' },
-  other: { label: 'Other', color: 'var(--chart-4)' },
+const rosterGrowthChartConfig = {
+  totalPeople: { label: 'Total people', color: BLUE[500] },
+  students: { label: 'Students', color: BLUE[400] },
+  collaborators: { label: 'Collaborators', color: BLUE[200] },
 } satisfies ChartConfig;
 
-const upcomingEventsChartConfig = {
-  publicEvents: { label: 'Public', color: 'var(--primary)' },
-  privateEvents: { label: 'Private', color: 'var(--chart-4)' },
+const announcementBreakdownChartConfig = {
+  count: { label: 'Count', color: BLUE[500] },
 } satisfies ChartConfig;
 
-export function ProjectDetailContent({
-  user,
-  projectId,
-}: {
-  user: unknown;
-  projectId: string;
-}) {
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function ProjectDetailContent({ projectId }: { projectId: string }) {
   const supabase = useSupabase();
 
   const [project, setProject] = useState<ProjectRecord | null>(null);
-  const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD_DATA);
+  const [dashboardData, setDashboardData] =
+    useState<DashboardData>(EMPTY_DASHBOARD_DATA);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [attendancePeriod, setAttendancePeriod] = useState<
+    'session' | 'daily' | 'weekly' | 'monthly'
+  >('session');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [dismissedActionIds, setDismissedActionIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     void loadProjectOverview();
@@ -249,20 +286,17 @@ export function ProjectDetailContent({
 
   const loadProjectOverview = async () => {
     setLoading(true);
-
     try {
-      const eventsPromise = fetch(`/api/projects/${encodeURIComponent(projectId)}/events`, {
-        credentials: 'include',
-      }).then(async (response) => {
+      const eventsPromise = fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/events`,
+        { credentials: 'include' },
+      ).then(async (response) => {
         const payload = (await response.json().catch(() => ({}))) as {
           error?: string;
           events?: EventRecord[];
         };
-
-        if (!response.ok) {
-          throw new Error(payload.error || 'Failed to load events');
-        }
-
+        if (!response.ok)
+          throw new Error(payload.error ?? 'Failed to load events');
         return payload.events ?? [];
       });
 
@@ -312,18 +346,17 @@ export function ProjectDetailContent({
       if (announcementError) throw announcementError;
       if (sessionError) throw sessionError;
 
-      const attendanceSessions = (sessionData ?? []) as AttendanceSessionRecord[];
+      const attendanceSessions = (sessionData ??
+        []) as AttendanceSessionRecord[];
       const recentAttendanceSessions = attendanceSessions.slice(0, 8);
-      const sessionIds = recentAttendanceSessions.map((session) => session.id);
+      const sessionIds = recentAttendanceSessions.map((s) => s.id);
 
       let attendanceEntries: AttendanceEntryRecord[] = [];
-
       if (sessionIds.length > 0) {
         const { data: entryData, error: entryError } = await (supabase as any)
           .from('attendance_entries')
           .select('id, session_id, status')
           .in('session_id', sessionIds);
-
         if (entryError) throw entryError;
         attendanceEntries = (entryData ?? []) as AttendanceEntryRecord[];
       }
@@ -349,101 +382,209 @@ export function ProjectDetailContent({
     }
   };
 
+  // ─── Derived values ──────────────────────────────────────────────────────
+
   const collaboratorMembers = useMemo(
-    () => dashboardData.projectMembers.filter((member) => member.role !== 'owner'),
+    () => dashboardData.projectMembers.filter((m) => m.role !== 'owner'),
     [dashboardData.projectMembers],
   );
-
   const collaboratorCount = collaboratorMembers.length;
 
   const publishedAnnouncementCount = useMemo(
-    () => dashboardData.announcements.filter((announcement) => announcement.status === 'published').length,
+    () =>
+      dashboardData.announcements.filter((a) => a.status === 'published')
+        .length,
     [dashboardData.announcements],
   );
-
   const draftAnnouncementCount = useMemo(
-    () => dashboardData.announcements.filter((announcement) => announcement.status === 'draft').length,
+    () =>
+      dashboardData.announcements.filter((a) => a.status === 'draft').length,
     [dashboardData.announcements],
   );
-
   const pinnedAnnouncementCount = useMemo(
-    () => dashboardData.announcements.filter((announcement) => announcement.is_pinned).length,
+    () => dashboardData.announcements.filter((a) => a.is_pinned).length,
     [dashboardData.announcements],
   );
 
   const nextEvents = useMemo(
     () =>
       [...dashboardData.events]
-        .filter((event) => {
-          const startTime = new Date(event.start_at).getTime();
-          return !Number.isNaN(startTime) && startTime >= Date.now() && event.status !== 'cancelled';
+        .filter((e) => {
+          const t = new Date(e.start_at).getTime();
+          return (
+            !Number.isNaN(t) && t >= Date.now() && e.status !== 'cancelled'
+          );
         })
-        .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()),
+        .sort(
+          (a, b) =>
+            new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+        ),
     [dashboardData.events],
   );
 
   const publicEventCount = useMemo(
-    () => dashboardData.events.filter((event) => event.visibility === 'public').length,
+    () => dashboardData.events.filter((e) => e.visibility === 'public').length,
     [dashboardData.events],
   );
-
   const privateEventCount = dashboardData.events.length - publicEventCount;
-
-  const publicSessionCount = useMemo(
-    () => dashboardData.attendanceSessions.filter((session) => session.is_public).length,
-    [dashboardData.attendanceSessions],
-  );
 
   const attendanceEntriesBySession = useMemo(() => {
     const map = new Map<string, AttendanceEntryRecord[]>();
-
     dashboardData.attendanceEntries.forEach((entry) => {
       const bucket = map.get(entry.session_id) ?? [];
       bucket.push(entry);
       map.set(entry.session_id, bucket);
     });
-
     return map;
   }, [dashboardData.attendanceEntries]);
 
   const attendanceChartData = useMemo<AttendanceChartRow[]>(() => {
-    return [...dashboardData.recentAttendanceSessions]
-      .sort((a, b) => new Date(a.meeting_date).getTime() - new Date(b.meeting_date).getTime())
-      .map((session) => {
-        const sessionEntries = attendanceEntriesBySession.get(session.id) ?? [];
-
-        let present = 0;
-        let late = 0;
-        let excused = 0;
-        let absent = 0;
-        let weightedAttendance = 0;
-
-        sessionEntries.forEach((entry) => {
-          const status = coerceAttendanceStatus(entry.status);
-          weightedAttendance += getAttendanceWeight(status);
-
-          if (status === 'present') present += 1;
-          if (status === 'late') late += 1;
-          if (status === 'excused') excused += 1;
-          if (status === 'absent') absent += 1;
+    if (attendancePeriod === 'session') {
+      return [...dashboardData.recentAttendanceSessions]
+        .sort(
+          (a, b) =>
+            new Date(a.meeting_date).getTime() -
+            new Date(b.meeting_date).getTime(),
+        )
+        .map((session) => {
+          const entries = attendanceEntriesBySession.get(session.id) ?? [];
+          let present = 0,
+            late = 0,
+            excused = 0,
+            absent = 0,
+            weightedAttendance = 0;
+          entries.forEach((entry) => {
+            const status = coerceAttendanceStatus(entry.status);
+            weightedAttendance += getAttendanceWeight(status);
+            if (status === 'present') present++;
+            if (status === 'late') late++;
+            if (status === 'excused') excused++;
+            if (status === 'absent') absent++;
+          });
+          const attendees = entries.length;
+          const rate =
+            attendees > 0
+              ? Math.round((weightedAttendance / attendees) * 100)
+              : 0;
+          return {
+            session: formatSessionTick(session.meeting_date),
+            fullLabel: session.title,
+            dateLabel: formatReadableDate(session.meeting_date),
+            present,
+            late,
+            excused,
+            absent,
+            attendees,
+            rate,
+          };
         });
+    }
 
-        const attendees = sessionEntries.length;
-        const rate = attendees > 0 ? Math.round((weightedAttendance / attendees) * 100) : 0;
+    const bucketKeyFor = (dateStr: string) => {
+      const d = new Date(dateStr);
+      if (attendancePeriod === 'daily') return d.toISOString().slice(0, 10);
+      if (attendancePeriod === 'weekly') {
+        const copy = new Date(d);
+        copy.setHours(0, 0, 0, 0);
+        copy.setDate(copy.getDate() - copy.getDay());
+        return copy.toISOString().slice(0, 10);
+      }
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    };
 
-        return {
-          session: formatSessionTick(session.meeting_date),
-          fullLabel: session.title,
-          dateLabel: formatReadableDate(session.meeting_date),
-          present,
-          late,
-          excused,
-          absent,
+    const map = new Map<
+      string,
+      {
+        present: number;
+        late: number;
+        excused: number;
+        absent: number;
+        attendees: number;
+        weightedAttendance: number;
+        firstDate: string;
+        titles: string[];
+      }
+    >();
+
+    [...dashboardData.recentAttendanceSessions]
+      .sort(
+        (a, b) =>
+          new Date(a.meeting_date).getTime() -
+          new Date(b.meeting_date).getTime(),
+      )
+      .forEach((session) => {
+        const key = bucketKeyFor(session.meeting_date);
+        const bucket = map.get(key) ?? {
+          present: 0,
+          late: 0,
+          excused: 0,
+          absent: 0,
+          attendees: 0,
+          weightedAttendance: 0,
+          firstDate: session.meeting_date,
+          titles: [],
+        };
+        const entries = attendanceEntriesBySession.get(session.id) ?? [];
+        entries.forEach((e) => {
+          const status = coerceAttendanceStatus(e.status);
+          bucket.weightedAttendance += getAttendanceWeight(status);
+          if (status === 'present') bucket.present++;
+          if (status === 'late') bucket.late++;
+          if (status === 'excused') bucket.excused++;
+          if (status === 'absent') bucket.absent++;
+        });
+        bucket.attendees += entries.length;
+        bucket.titles.push(session.title);
+        map.set(key, bucket);
+      });
+
+    const rows: AttendanceChartRow[] = [];
+    Array.from(map.entries())
+      .sort(
+        (a, b) =>
+          new Date(a[1].firstDate).getTime() -
+          new Date(b[1].firstDate).getTime(),
+      )
+      .forEach(([, v]) => {
+        const attendees = v.attendees;
+        const rate =
+          attendees > 0
+            ? Math.round((v.weightedAttendance / attendees) * 100)
+            : 0;
+        let sessionLabel = '',
+          dateLabel = '';
+        if (attendancePeriod === 'daily') {
+          sessionLabel = formatSessionTick(v.firstDate);
+          dateLabel = formatReadableDate(v.firstDate);
+        } else if (attendancePeriod === 'weekly') {
+          const d = new Date(v.firstDate);
+          const weekStart = new Date(d);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          sessionLabel = formatSessionTick(weekStart.toISOString());
+          dateLabel = `Week of ${formatReadableDate(weekStart.toISOString())}`;
+        } else {
+          const d = new Date(v.firstDate);
+          sessionLabel = `${d.toLocaleString(undefined, { month: 'short' })} ${d.getFullYear()}`;
+          dateLabel = sessionLabel;
+        }
+        rows.push({
+          session: sessionLabel,
+          fullLabel: v.titles.join('; '),
+          dateLabel,
+          present: v.present,
+          late: v.late,
+          excused: v.excused,
+          absent: v.absent,
           attendees,
           rate,
-        };
+        });
       });
-  }, [attendanceEntriesBySession, dashboardData.recentAttendanceSessions]);
+    return rows;
+  }, [
+    attendanceEntriesBySession,
+    dashboardData.recentAttendanceSessions,
+    attendancePeriod,
+  ]);
 
   const attendanceRowsWithData = useMemo(
     () => attendanceChartData.filter((row) => row.attendees > 0),
@@ -452,14 +593,16 @@ export function ProjectDetailContent({
 
   const averageAttendanceRate = useMemo(() => {
     if (attendanceRowsWithData.length === 0) return 0;
-
     return Math.round(
-      attendanceRowsWithData.reduce((sum, row) => sum + row.rate, 0) / attendanceRowsWithData.length,
+      attendanceRowsWithData.reduce((sum, row) => sum + row.rate, 0) /
+        attendanceRowsWithData.length,
     );
   }, [attendanceRowsWithData]);
 
-  const latestAttendanceRow = attendanceRowsWithData[attendanceRowsWithData.length - 1] ?? null;
-  const previousAttendanceRow = attendanceRowsWithData[attendanceRowsWithData.length - 2] ?? null;
+  const latestAttendanceRow =
+    attendanceRowsWithData[attendanceRowsWithData.length - 1] ?? null;
+  const previousAttendanceRow =
+    attendanceRowsWithData[attendanceRowsWithData.length - 2] ?? null;
   const attendanceMomentum =
     latestAttendanceRow != null && previousAttendanceRow != null
       ? latestAttendanceRow.rate - previousAttendanceRow.rate
@@ -468,155 +611,177 @@ export function ProjectDetailContent({
   const recentSessionsWithoutEntries = useMemo(
     () =>
       dashboardData.recentAttendanceSessions.filter(
-        (session) => (attendanceEntriesBySession.get(session.id) ?? []).length === 0,
+        (s) => (attendanceEntriesBySession.get(s.id) ?? []).length === 0,
       ),
     [attendanceEntriesBySession, dashboardData.recentAttendanceSessions],
   );
 
-  const activityChartData = useMemo(
+  const hasAttendanceData = attendanceRowsWithData.length > 0;
+  const totalPeople = dashboardData.students.length + collaboratorCount;
+
+  const eventsNext7Days = useMemo(
+    () => nextEvents.filter((e) => isWithinDays(e.start_at, 7)),
+    [nextEvents],
+  );
+  const eventsNext30Days = useMemo(
+    () => nextEvents.filter((e) => isWithinDays(e.start_at, 30)),
+    [nextEvents],
+  );
+
+  const activityTrendData = useMemo(
     () =>
-      buildActivityChartData(
+      buildActivityTrendData(
         dashboardData.announcements,
         dashboardData.events,
         dashboardData.attendanceSessions,
       ),
-    [dashboardData.announcements, dashboardData.attendanceSessions, dashboardData.events],
+    [
+      dashboardData.announcements,
+      dashboardData.attendanceSessions,
+      dashboardData.events,
+    ],
   );
+  const hasActivityTrendData = activityTrendData.some((r) => r.total > 0);
 
-  const growthChartData = useMemo(
-    () => buildGrowthChartData(dashboardData.students, collaboratorMembers),
+  const attendanceMixData = useMemo(
+    () => buildAttendanceMixData(attendanceRowsWithData),
+    [attendanceRowsWithData],
+  );
+  const hasAttendanceMixData = attendanceMixData.some((i) => i.count > 0);
+
+  const attendanceStatusTimelineData = useMemo<AttendanceStatusTimelineRow[]>(
+    () =>
+      attendanceChartData
+        .map((row) => ({
+          session: row.session,
+          fullLabel: `${row.dateLabel}: ${row.fullLabel}`,
+          present: row.present,
+          late: row.late,
+          excused: row.excused,
+          absent: row.absent,
+          total: row.present + row.late + row.excused + row.absent,
+        }))
+        .filter((row) => row.total > 0),
+    [attendanceChartData],
+  );
+  const hasAttendanceTimelineData = attendanceStatusTimelineData.length > 0;
+
+  const rosterGrowthData = useMemo(
+    () => buildRosterGrowthData(dashboardData.students, collaboratorMembers),
     [collaboratorMembers, dashboardData.students],
   );
+  const hasRosterGrowthData = rosterGrowthData.some((r) => r.totalPeople > 0);
 
-  const publishingPipelineData = useMemo(
+  const announcementBreakdownData = useMemo(
     () =>
-      buildPublishingPipelineData({
-        publishedAnnouncements: publishedAnnouncementCount,
-        draftAnnouncements: draftAnnouncementCount,
-        publicEvents: publicEventCount,
-        privateEvents: privateEventCount,
-        publicMeetings: publicSessionCount,
-        pendingInvites: dashboardData.pendingInvitations.length,
+      buildAnnouncementBreakdownData({
+        announcements: dashboardData.announcements,
+        publishedCount: publishedAnnouncementCount,
+        draftCount: draftAnnouncementCount,
+        pinnedCount: pinnedAnnouncementCount,
       }),
     [
-      dashboardData.pendingInvitations.length,
+      dashboardData.announcements,
       draftAnnouncementCount,
-      privateEventCount,
-      publicEventCount,
-      publicSessionCount,
+      pinnedAnnouncementCount,
       publishedAnnouncementCount,
     ],
   );
-
-  const announcementStatusData = useMemo(
-    () =>
-      buildAnnouncementStatusData({
-        total: dashboardData.announcements.length,
-        published: publishedAnnouncementCount,
-        drafts: draftAnnouncementCount,
-      }),
-    [dashboardData.announcements.length, draftAnnouncementCount, publishedAnnouncementCount],
-  );
-
-  const weeklyUpcomingEventsData = useMemo(
-    () => buildWeeklyUpcomingEventsData(nextEvents, 6),
-    [nextEvents],
-  );
-
-  const hasAttendanceData = attendanceRowsWithData.length > 0;
-  const hasActivityData = activityChartData.some((row) => row.total > 0);
-  const hasGrowthData = growthChartData.some((row) => row.totalPeople > 0);
-  const hasUpcomingEventsData = weeklyUpcomingEventsData.some((row) => row.total > 0);
-
-  const publicSurfaceCount = publishedAnnouncementCount + publicEventCount + publicSessionCount;
-  const totalTrackedSurfaceCount =
-    dashboardData.announcements.length + dashboardData.events.length + dashboardData.attendanceSessions.length;
-  const publicSurfaceRate =
-    totalTrackedSurfaceCount > 0 ? Math.round((publicSurfaceCount / totalTrackedSurfaceCount) * 100) : 0;
-
-  const eventsNext30Days = useMemo(
-    () => nextEvents.filter((event) => isWithinDays(event.start_at, 30)),
-    [nextEvents],
+  const hasAnnouncementBreakdownData = announcementBreakdownData.some(
+    (r) => r.count > 0,
   );
 
   const recentPeopleCount =
-    countRecentDates(dashboardData.students.map((student) => student.joined_at), 30) +
     countRecentDates(
-      collaboratorMembers.map((member) => member.joined_at || member.created_at),
+      dashboardData.students.map((s) => s.joined_at),
+      30,
+    ) +
+    countRecentDates(
+      collaboratorMembers.map((m) => m.joined_at ?? m.created_at),
       30,
     );
 
-  const actionItemsCount =
-    draftAnnouncementCount +
-    dashboardData.pendingInvitations.length +
-    recentSessionsWithoutEntries.length;
+  const publicEventRatio =
+    dashboardData.events.length > 0
+      ? Math.round((publicEventCount / dashboardData.events.length) * 100)
+      : 0;
 
-  const overviewSummary = useMemo(
-    () =>
-      buildOverviewSummary({
-        clubName: project?.name || 'This club',
-        studentCount: dashboardData.students.length,
-        collaboratorCount,
-        announcementCount: publishedAnnouncementCount,
-        eventCount: nextEvents.length,
-      }),
+  // Action items for the task queue
+  const actionItems = useMemo(
+    () => [
+      {
+        id: 'draft-announcements',
+        title: 'Draft announcements',
+        description:
+          draftAnnouncementCount === 1
+            ? '1 announcement is unpublished and waiting for review.'
+            : `${draftAnnouncementCount} announcements are unpublished and waiting for review.`,
+        href: `/home/projects/${projectId}/announcements`,
+        count: draftAnnouncementCount,
+        warn: true,
+      },
+      {
+        id: 'pending-invitations',
+        title: 'Pending invitations',
+        description:
+          dashboardData.pendingInvitations.length === 1
+            ? '1 collaborator has been invited but has not yet joined.'
+            : `${dashboardData.pendingInvitations.length} collaborators have been invited but have not yet joined.`,
+        href: `/home/projects/${projectId}/members`,
+        count: dashboardData.pendingInvitations.length,
+        warn: true,
+      },
+      {
+        id: 'sessions-missing-attendance',
+        title: 'Sessions missing attendance',
+        description:
+          recentSessionsWithoutEntries.length === 1
+            ? '1 recent meeting has no attendance logged.'
+            : `${recentSessionsWithoutEntries.length} recent meetings have no attendance logged.`,
+        href: `/home/projects/${projectId}/attendance/meetings`,
+        count: recentSessionsWithoutEntries.length,
+        warn: true,
+      },
+    ],
     [
-      collaboratorCount,
-      dashboardData.students.length,
-      nextEvents.length,
-      project?.name,
-      publishedAnnouncementCount,
+      draftAnnouncementCount,
+      dashboardData.pendingInvitations.length,
+      recentSessionsWithoutEntries.length,
+      projectId,
     ],
   );
 
-  const summaryCards = [
-    {
-      label: 'Status',
-      value: formatStatus(project?.status),
-      detail: `${dashboardData.students.length + collaboratorCount} people`,
-    },
-    {
-      label: 'Public',
-      value: publicSurfaceCount,
-      detail: `${publicSurfaceRate}% live`,
-    },
-    {
-      label: 'Attendance',
-      value: hasAttendanceData ? `${averageAttendanceRate}%` : '--',
-      detail: latestAttendanceRow?.fullLabel || 'No sessions',
-    },
-    {
-      label: 'Next Event',
-      value: nextEvents[0] ? formatShortDate(nextEvents[0].start_at) : 'None',
-      detail: nextEvents[0]?.title || 'No event scheduled',
-    },
-  ];
+  const dismissAction = (id: string) => {
+    setDismissedActionIds((prev) => new Set([...prev, id]));
+  };
+  const undismissAction = (id: string) => {
+    setDismissedActionIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  // ─── Handlers ────────────────────────────────────────────────────────────
 
   const handleSaveChanges = async () => {
     if (!name.trim()) {
       toast.error('Project name cannot be empty');
       return;
     }
-
     setSaving(true);
-
     try {
       const { data, error } = await (supabase as any)
         .from('projects')
-        .update({
-          name,
-          description,
-        })
+        .update({ name, description })
         .eq('id', projectId)
         .select('id, name, description, status, created_at')
         .single();
-
       if (error) {
         console.error('Update error:', error);
         toast.error('Failed to update project');
         return;
       }
-
       setProject(data as ProjectRecord);
       setEditing(false);
       toast.success('Project updated successfully');
@@ -633,18 +798,17 @@ export function ProjectDetailContent({
       toast.error('Project name does not match');
       return;
     }
-
     setDeleting(true);
-
     try {
-      const { error } = await (supabase as any).from('projects').delete().eq('id', projectId);
-
+      const { error } = await (supabase as any)
+        .from('projects')
+        .delete()
+        .eq('id', projectId);
       if (error) {
         console.error('Delete error:', error);
         toast.error('Failed to delete project');
         return;
       }
-
       toast.success('Project deleted');
       window.location.href = '/home';
     } catch (error) {
@@ -655,20 +819,49 @@ export function ProjectDetailContent({
     }
   };
 
+  const getShareUrl = (projId?: string) => {
+    try {
+      return `${window.location?.origin ?? ''}/home/projects/${projId ?? projectId}`;
+    } catch {
+      return `/home/projects/${projId ?? projectId}`;
+    }
+  };
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl());
+      toast.success('Link copied to clipboard');
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const nativeShare = async () => {
+    const url = getShareUrl();
+    if ((navigator as any).share) {
+      try {
+        await (navigator as any).share({
+          title: project?.name,
+          text: project?.description ?? project?.name,
+          url,
+        });
+      } catch {
+        /* cancelled */
+      }
+    } else {
+      toast('Sharing not supported on this device');
+    }
+  };
+
   const cancelEditing = () => {
     setEditing(false);
     setName(project?.name ?? '');
     setDescription(project?.description ?? '');
   };
 
-  const openDeleteModal = () => {
-    setDeleteModalOpen(true);
-    setDeleteConfirmInput('');
-  };
+  // ─── Early returns ────────────────────────────────────────────────────────
 
-  if (loading) {
-    return <LoadingOverlay fullPage />;
-  }
+  if (loading) return <LoadingOverlay fullPage />;
 
   if (!project) {
     return (
@@ -682,210 +875,185 @@ export function ProjectDetailContent({
     );
   }
 
-  const statCards = [
-    {
-      label: 'Students',
-      value: dashboardData.students.length,
-      detail:
-        recentPeopleCount > 0 ? `+${recentPeopleCount} in 30d` : 'No recent growth',
-    },
-    {
-      label: 'Collaborators',
-      value: collaboratorCount,
-      detail:
-        dashboardData.pendingInvitations.length > 0
-          ? `${dashboardData.pendingInvitations.length} pending`
-          : 'No pending',
-    },
-    {
-      label: 'Attendance',
-      value: `${averageAttendanceRate}%`,
-      detail:
-        attendanceMomentum != null
-          ? formatDelta(attendanceMomentum)
-          : latestAttendanceRow != null
-            ? `${latestAttendanceRow.attendees} attendees`
-            : 'No data',
-    },
-    {
-      label: 'Upcoming Events',
-      value: nextEvents.length,
-      detail:
-        nextEvents[0] != null
-          ? formatShortDate(nextEvents[0].start_at)
-          : 'None',
-    },
-    {
-      label: 'Public',
-      value: `${publicSurfaceRate}%`,
-      detail: `${publicSurfaceCount} items`,
-    },
-    {
-      label: 'Queue',
-      value: actionItemsCount,
-      detail:
-        actionItemsCount > 0
-          ? `${actionItemsCount} open`
-          : 'Clear',
-    },
-  ];
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  const studentPct =
+    totalPeople > 0
+      ? Math.round((dashboardData.students.length / totalPeople) * 100)
+      : 0;
+
+  const attendanceDeltaDetail =
+    attendanceMomentum != null
+      ? formatDelta(attendanceMomentum)
+      : latestAttendanceRow != null
+        ? `${latestAttendanceRow.attendees} last session`
+        : 'No attendance yet';
+
+  const sessionsThisMonth = dashboardData.attendanceSessions.filter((s) => {
+    const d = new Date(s.meeting_date);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    );
+  }).length;
 
   return (
-    <div className="w-full space-y-4 pb-8 font-sans">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="space-y-5 p-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className={cn('bg-background/80', projectStatusClass(project.status))}>
-                    {formatStatus(project.status)}
-                  </Badge>
-                  <Badge variant="outline" className="bg-background/80">
-                    {publicSurfaceCount} live
-                  </Badge>
-                  {pinnedAnnouncementCount > 0 ? (
-                    <Badge variant="outline" className="bg-background/80">
-                      {pinnedAnnouncementCount} pinned
-                    </Badge>
-                  ) : null}
-                </div>
-
-                <div className="space-y-2">
-                  <CardTitle className="text-3xl tracking-tight sm:text-4xl">{project.name}</CardTitle>
-                  <CardDescription className="max-w-2xl text-sm text-muted-foreground">
-                    {overviewSummary}
-                  </CardDescription>
-                </div>
-              </div>
-
-              {!editing && (
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-                  <Button asChild variant="secondary" size="sm">
-                    <a
-                      href={`/site/${projectId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="gap-2"
-                    >
-                      Open site
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  </Button>
-                  <Button asChild size="sm">
-                    <Link href={`/home/projects/${projectId}/editor`}>Edit</Link>
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {summaryCards.map((item) => (
-                <HeroMetric key={item.label} label={item.label} value={item.value} detail={item.detail} />
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-              <span>{project.id}</span>
-              <span>{formatShortDate(project.created_at)}</span>
-              <span>{getUserEmail(user)}</span>
-            </div>
-          </CardHeader>
-        </Card>
-
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between p-5 pb-0">
-            <div>
-              <CardTitle className="text-base">Upcoming Schedule</CardTitle>
-              <CardDescription>Next six weeks.</CardDescription>
-            </div>
-            <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-              <HeaderStat label="30d" value={eventsNext30Days.length} />
-              <HeaderStat label="Public" value={publicEventCount} />
-              <HeaderStat label="Private" value={privateEventCount} />
-            </div>
-          </CardHeader>
-          <CardContent className="p-5 pt-3">
-            {hasUpcomingEventsData ? (
-              <ChartContainer
-                config={upcomingEventsChartConfig}
-                className="h-64 w-full"
-                responsiveProps={{ debounce: 180 }}
+    <div className="w-full space-y-8 pb-16">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            {project.name}
+          </h1>
+          <div className="flex items-start gap-1.5">
+            <p className="text-muted-foreground mt-0.5 max-w-xl text-sm leading-relaxed">
+              {project.description?.trim() ||
+                'No description yet. Add one so members know what this club is about.'}
+            </p>
+            {!editing && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground h-6 w-6 shrink-0 rounded"
+                asChild
               >
-                <BarChart accessibilityLayer data={weeklyUpcomingEventsData}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="week" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={30} />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        indicator="dot"
-                        labelFormatter={(_, payload) => {
-                          const row = payload?.[0]?.payload as { fullLabel?: string } | undefined;
-                          return row?.fullLabel ?? '';
-                        }}
-                      />
-                    }
-                  />
-                  <Bar dataKey="publicEvents" stackId="events" fill="var(--color-publicEvents)" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="privateEvents" stackId="events" fill="var(--color-privateEvents)" />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <ChartEmptyState message="No upcoming events." />
+                <Link
+                  href={`/home/projects/${projectId}/settings?focus=description`}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Link>
+              </Button>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        {!editing && (
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Button asChild variant="outline" size="sm">
+              <a
+                href={`/site/${projectId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="gap-1.5"
+              >
+                Open site <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/home/projects/${projectId}/editor`}>Edit club</Link>
+            </Button>
+            <Button
+              size="sm"
+              style={{ background: BLUE[600] }}
+              className="border-0 text-white hover:opacity-90"
+              onClick={() => setShareDialogOpen(true)}
+            >
+              Share
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-6">
-        {statCards.map((card) => (
-          <OverviewStatCard
-            key={card.label}
-            label={card.label}
-            value={card.value}
-            detail={card.detail}
-          />
-        ))}
+      {/* ── KPI strip ──────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard
+          label="Total Members"
+          value={totalPeople}
+          detail={
+            recentPeopleCount > 0
+              ? `+${recentPeopleCount} this month`
+              : 'No new joins'
+          }
+          up={recentPeopleCount > 0}
+        />
+        <KpiCard
+          label="Students"
+          value={dashboardData.students.length}
+          detail={`${studentPct}% of roster`}
+        />
+        <KpiCard
+          label="Sessions This Month"
+          value={sessionsThisMonth}
+          detail={`${dashboardData.attendanceSessions.length} all time`}
+        />
+        <KpiCard
+          label="Attendance Average"
+          value={hasAttendanceData ? `${averageAttendanceRate}%` : 'N/A'}
+          detail={attendanceDeltaDetail}
+          up={attendanceMomentum != null ? attendanceMomentum > 0 : undefined}
+          down={attendanceMomentum != null ? attendanceMomentum < 0 : undefined}
+        />
       </div>
+
+      {/* ── Action queue ───────────────────────────────────────────────────── */}
+      <ActionCenter
+        items={actionItems}
+        dismissedIds={dismissedActionIds}
+        onDismiss={dismissAction}
+        onUndismiss={undismissAction}
+        projectId={projectId}
+      />
+
+      {/* ── Attendance ─────────────────────────────────────────────────────── */}
+      <SectionHeading>Attendance</SectionHeading>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-5 pb-0">
+        {/* Trend line */}
+        <Card className="xl:col-span-2">
+          <CardHeader className="flex flex-col gap-3 pb-2 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <CardTitle>Attendance Performance</CardTitle>
-              <CardDescription>Attendance volume and rate.</CardDescription>
+              <CardTitle className="text-sm font-semibold">
+                Attendance rate
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Weighted score across sessions
+              </CardDescription>
             </div>
-            <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-              <HeaderStat label="Recent meetings" value={dashboardData.recentAttendanceSessions.length} />
-              <HeaderStat label="Average rate" value={`${averageAttendanceRate}%`} />
-            </div>
+            <PeriodSelect
+              value={attendancePeriod}
+              onChange={setAttendancePeriod}
+            />
           </CardHeader>
           <CardContent>
             {hasAttendanceData ? (
               <ChartContainer
                 config={attendancePerformanceChartConfig}
                 className="h-64 w-full"
-                responsiveProps={{ debounce: 180 }}
               >
                 <ComposedChart accessibilityLayer data={attendanceChartData}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="session" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis
-                    yAxisId="count"
-                    allowDecimals={false}
+                  <defs>
+                    <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="5%"
+                        stopColor={BLUE[500]}
+                        stopOpacity={0.15}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor={BLUE[500]}
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="currentColor"
+                    strokeOpacity={0.06}
+                  />
+                  <XAxis
+                    dataKey="session"
                     tickLine={false}
                     axisLine={false}
-                    width={34}
+                    tickMargin={8}
+                    tick={{ fontSize: 11 }}
                   />
                   <YAxis
-                    yAxisId="rate"
-                    orientation="right"
                     domain={[0, 100]}
-                    tickFormatter={(value) => `${value}%`}
+                    tickFormatter={(v) => `${v}%`}
                     tickLine={false}
                     axisLine={false}
-                    width={40}
+                    width={38}
+                    tick={{ fontSize: 11 }}
                   />
                   <ChartTooltip
                     content={
@@ -895,294 +1063,732 @@ export function ProjectDetailContent({
                           const row = payload?.[0]?.payload as
                             | { dateLabel?: string; fullLabel?: string }
                             | undefined;
-
-                          if (!row) return '';
-                          return `${row.dateLabel} - ${row.fullLabel}`;
+                          return row
+                            ? `${row.dateLabel} · ${row.fullLabel}`
+                            : '';
                         }}
                       />
                     }
                   />
-                  <Bar
-                    yAxisId="count"
-                    dataKey="attendees"
-                    fill="var(--color-attendees)"
-                    radius={[8, 8, 0, 0]}
-                    maxBarSize={34}
-                  />
                   <Line
-                    yAxisId="rate"
                     dataKey="rate"
                     type="monotone"
-                    stroke="var(--color-rate)"
-                    strokeWidth={3}
-                    dot={{ r: 3, fill: 'var(--color-rate)' }}
-                    activeDot={{ r: 5 }}
+                    stroke={BLUE[500]}
+                    strokeWidth={2.5}
+                    dot={{ r: 3, fill: BLUE[500], strokeWidth: 0 }}
+                    activeDot={{ r: 5, fill: BLUE[600] }}
                   />
                 </ComposedChart>
               </ChartContainer>
             ) : (
-              <ChartEmptyState message="No attendance entries yet. Start logging meetings to populate this chart." />
+              <ChartEmpty message="No attendance entries yet. Start logging attendance." />
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-5 pb-0">
-            <div>
-              <CardTitle>Activity Flow</CardTitle>
-              <CardDescription>Six-month content volume.</CardDescription>
-            </div>
-            <div className="text-sm font-medium text-muted-foreground">
-              {activityChartData.reduce((sum, row) => sum + row.total, 0)}
+        {/* Status mix */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">
+                  Status breakdown
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Present, late, excused, absent
+                </CardDescription>
+              </div>
+              <PeriodSelect
+                value={
+                  attendancePeriod === 'session' ? 'weekly' : attendancePeriod
+                }
+                onChange={(v) =>
+                  setAttendancePeriod(v as 'daily' | 'weekly' | 'monthly')
+                }
+                excludeSession
+              />
             </div>
           </CardHeader>
           <CardContent>
-            {hasActivityData ? (
+            {hasAttendanceMixData ? (
               <ChartContainer
-                config={activityChartConfig}
+                config={attendanceMixChartConfig}
                 className="h-64 w-full"
-                responsiveProps={{ debounce: 180 }}
               >
-                <BarChart accessibilityLayer data={activityChartData}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={30} />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        indicator="dot"
-                        labelFormatter={(_, payload) => {
-                          const row = payload?.[0]?.payload as { fullLabel?: string } | undefined;
-                          return row?.fullLabel ?? '';
-                        }}
-                      />
-                    }
+                <BarChart
+                  accessibilityLayer
+                  data={attendanceMixData}
+                  layout="vertical"
+                  margin={{ left: 0 }}
+                >
+                  <CartesianGrid
+                    horizontal={false}
+                    stroke="currentColor"
+                    strokeOpacity={0.06}
                   />
-                  <Bar dataKey="announcements" fill="var(--color-announcements)" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="events" fill="var(--color-events)" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="sessions" fill="var(--color-sessions)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <ChartEmptyState message="No activity yet." />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-5 pb-0">
-            <div>
-              <CardTitle>Publishing Mix</CardTitle>
-              <CardDescription>Publishing and access counts.</CardDescription>
-            </div>
-            <div className="text-sm font-medium text-muted-foreground">
-              {publishingPipelineData.reduce((sum, row) => sum + row.value, 0)}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {publishingPipelineData.some((row) => row.value > 0) ? (
-              <ChartContainer
-                config={pipelineChartConfig}
-                className="h-64 w-full"
-                responsiveProps={{ debounce: 180 }}
-              >
-                <BarChart accessibilityLayer data={publishingPipelineData} layout="vertical" margin={{ left: 8 }}>
-                  <CartesianGrid horizontal={false} />
-                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="label" tickLine={false} axisLine={false} width={92} />
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    width={64}
+                    tick={{ fontSize: 11 }}
+                  />
                   <ChartTooltip
                     content={
                       <ChartTooltipContent
                         hideLabel
-                        formatter={(value, _name, item) => (
-                          <div className="flex w-full items-center justify-between gap-3">
-                            <span className="text-muted-foreground">
-                              {((item as { payload?: PipelineRow }).payload?.label ?? 'Item')}
-                            </span>
-                            <span className="font-medium tabular-nums">
-                              {Number(value).toLocaleString()}
-                            </span>
-                          </div>
-                        )}
+                        formatter={(value, _name, item) => {
+                          const row = (item as { payload?: AttendanceMixRow })
+                            .payload;
+                          return (
+                            <div className="flex w-full items-center justify-between gap-3">
+                              <span className="text-muted-foreground">
+                                {row?.label ?? 'Status'}
+                              </span>
+                              <span className="font-medium tabular-nums">
+                                {Number(value).toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        }}
                       />
                     }
                   />
-                  <Bar dataKey="value" radius={8}>
-                    {publishingPipelineData.map((entry) => (
-                      <Cell key={entry.key} fill={entry.fill} />
+                  <Bar dataKey="count" radius={6}>
+                    {attendanceMixData.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
                     ))}
                   </Bar>
                 </BarChart>
               </ChartContainer>
             ) : (
-              <ChartEmptyState message="No publishing data." />
+              <ChartEmpty message="No attendance data yet." />
             )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-5 pb-0">
-            <div>
-              <CardTitle>Roster Growth</CardTitle>
-              <CardDescription>Six-month roster growth.</CardDescription>
+      {/* Session composition stacked bar */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">
+            Session composition
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Status breakdown per session
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {hasAttendanceTimelineData ? (
+            <ChartContainer
+              config={attendanceStatusTimelineChartConfig}
+              className="h-56 w-full"
+            >
+              <BarChart accessibilityLayer data={attendanceStatusTimelineData}>
+                <CartesianGrid
+                  vertical={false}
+                  stroke="currentColor"
+                  strokeOpacity={0.06}
+                />
+                <XAxis
+                  dataKey="session"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tick={{ fontSize: 11 }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tickLine={false}
+                  axisLine={false}
+                  width={32}
+                  tick={{ fontSize: 11 }}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      indicator="dot"
+                      labelFormatter={(_, payload) => {
+                        const row = payload?.[0]?.payload as
+                          | { fullLabel?: string }
+                          | undefined;
+                        return row?.fullLabel ?? '';
+                      }}
+                    />
+                  }
+                />
+                <Bar
+                  dataKey="present"
+                  stackId="a"
+                  fill={STATUS_COLORS.present}
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar dataKey="late" stackId="a" fill={STATUS_COLORS.late} />
+                <Bar
+                  dataKey="excused"
+                  stackId="a"
+                  fill={STATUS_COLORS.excused}
+                />
+                <Bar dataKey="absent" stackId="a" fill={STATUS_COLORS.absent} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <ChartEmpty message="No session breakdown yet." />
+          )}
+          {hasAttendanceTimelineData && (
+            <div className="mt-3 flex flex-wrap gap-4">
+              {[
+                { label: 'Present', color: STATUS_COLORS.present },
+                { label: 'Late', color: STATUS_COLORS.late },
+                { label: 'Excused', color: STATUS_COLORS.excused },
+                { label: 'Absent', color: STATUS_COLORS.absent },
+              ].map(({ label, color }) => (
+                <span
+                  key={label}
+                  className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                >
+                  <span
+                    className="h-2 w-2 rounded-sm"
+                    style={{ background: color }}
+                  />
+                  {label}
+                </span>
+              ))}
             </div>
-            <div className="text-sm font-medium text-muted-foreground">
-              {dashboardData.students.length + collaboratorCount}
-            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Roster & Growth ────────────────────────────────────────────────── */}
+      <SectionHeading>Roster &amp; Growth</SectionHeading>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              Roster growth
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Cumulative students and collaborators over 6 months
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {hasGrowthData ? (
+            {hasRosterGrowthData ? (
               <ChartContainer
-                config={growthChartConfig}
-                className="h-64 w-full"
-                responsiveProps={{ debounce: 180 }}
+                config={rosterGrowthChartConfig}
+                className="h-56 w-full"
               >
-                <ComposedChart accessibilityLayer data={growthChartData}>
-                  <defs>
-                    <linearGradient id="growth-total-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-totalPeople)" stopOpacity={0.22} />
-                      <stop offset="95%" stopColor="var(--color-totalPeople)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={30} />
+                <ComposedChart accessibilityLayer data={rosterGrowthData}>
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="currentColor"
+                    strokeOpacity={0.06}
+                  />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    width={32}
+                    tick={{ fontSize: 11 }}
+                  />
                   <ChartTooltip
                     content={
                       <ChartTooltipContent
                         indicator="dot"
                         labelFormatter={(_, payload) => {
-                          const row = payload?.[0]?.payload as { fullLabel?: string } | undefined;
+                          const row = payload?.[0]?.payload as
+                            | { fullLabel?: string }
+                            | undefined;
                           return row?.fullLabel ?? '';
                         }}
                       />
                     }
                   />
-                  <Area
+                  <Bar
+                    dataKey="students"
+                    fill={BLUE[400]}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={18}
+                  />
+                  <Bar
+                    dataKey="collaborators"
+                    fill={BLUE[200]}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={18}
+                  />
+                  <Line
                     dataKey="totalPeople"
                     type="monotone"
-                    fill="url(#growth-total-fill)"
-                    stroke="var(--color-totalPeople)"
+                    stroke={BLUE[600]}
                     strokeWidth={2.5}
-                  />
-                  <Line dataKey="students" type="monotone" stroke="var(--color-students)" strokeWidth={2} dot={false} />
-                  <Line
-                    dataKey="collaborators"
-                    type="monotone"
-                    stroke="var(--color-collaborators)"
-                    strokeWidth={2}
-                    dot={false}
+                    dot={{ r: 3, fill: BLUE[600], strokeWidth: 0 }}
                   />
                 </ComposedChart>
               </ChartContainer>
             ) : (
-              <ChartEmptyState message="No growth data." />
+              <ChartEmpty message="No roster growth data yet." />
+            )}
+            {hasRosterGrowthData && (
+              <div className="mt-3 flex flex-wrap gap-4">
+                {[
+                  { label: 'Students', color: BLUE[400] },
+                  { label: 'Collaborators', color: BLUE[200] },
+                  { label: 'Total', color: BLUE[600] },
+                ].map(({ label, color }) => (
+                  <span
+                    key={label}
+                    className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-sm"
+                      style={{ background: color }}
+                    />
+                    {label}
+                  </span>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 shadow-sm">
-          <CardHeader className="p-5 pb-0">
-            <CardTitle>Announcement Status</CardTitle>
-            <CardDescription>Current announcement mix.</CardDescription>
+        {/* Roster snapshot */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              Roster snapshot
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Current membership at a glance
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 p-5 pt-3">
-            {announcementStatusData.some((item) => item.value > 0) ? (
-              <>
-                <ChartContainer
-                  config={announcementStatusChartConfig}
-                  className="mx-auto h-52 w-full max-w-[220px]"
-                  responsiveProps={{ debounce: 180 }}
+          <CardContent className="space-y-4">
+            <div>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-muted-foreground">Students</span>
+                <span className="font-medium">
+                  {dashboardData.students.length} ({studentPct}%)
+                </span>
+              </div>
+              <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${studentPct}%`, background: BLUE[500] }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-muted-foreground">Collaborators</span>
+                <span className="font-medium">
+                  {collaboratorCount} ({100 - studentPct}%)
+                </span>
+              </div>
+              <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${100 - studentPct}%`,
+                    background: BLUE[300],
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2.5 border-t pt-4">
+              <StatRow
+                label="New joins (30 days)"
+                value={`+${recentPeopleCount}`}
+                positive={recentPeopleCount > 0}
+              />
+              <StatRow
+                label="Pending invites"
+                value={dashboardData.pendingInvitations.length}
+                warn={dashboardData.pendingInvitations.length > 0}
+              />
+              <StatRow label="Total roster" value={totalPeople} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Activity ───────────────────────────────────────────────────────── */}
+      <SectionHeading>Activity</SectionHeading>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              Monthly activity
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Announcements, events, and sessions over 6 months
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {hasActivityTrendData ? (
+              <ChartContainer
+                config={activityTrendChartConfig}
+                className="h-56 w-full"
+              >
+                <ComposedChart accessibilityLayer data={activityTrendData}>
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="currentColor"
+                    strokeOpacity={0.06}
+                  />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    width={32}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        indicator="dot"
+                        labelFormatter={(_, payload) => {
+                          const row = payload?.[0]?.payload as
+                            | { fullLabel?: string }
+                            | undefined;
+                          return row?.fullLabel ?? '';
+                        }}
+                      />
+                    }
+                  />
+                  <Bar
+                    dataKey="announcements"
+                    fill={BLUE[300]}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={20}
+                  />
+                  <Bar
+                    dataKey="events"
+                    fill={BLUE[500]}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={20}
+                  />
+                  <Bar
+                    dataKey="sessions"
+                    fill={BLUE[700]}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={20}
+                  />
+                  <Line
+                    dataKey="total"
+                    type="monotone"
+                    stroke={BLUE[500]}
+                    strokeWidth={2}
+                    dot={{ r: 2.5, fill: BLUE[500], strokeWidth: 0 }}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+            ) : (
+              <ChartEmpty message="No activity trend data yet." />
+            )}
+            {hasActivityTrendData && (
+              <div className="mt-3 flex flex-wrap gap-4">
+                {[
+                  { label: 'Announcements', color: BLUE[300] },
+                  { label: 'Events', color: BLUE[500] },
+                  { label: 'Sessions', color: BLUE[700] },
+                ].map(({ label, color }) => (
+                  <span
+                    key={label}
+                    className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                  >
+                    <span
+                      className="h-2 w-2 rounded-sm"
+                      style={{ background: color }}
+                    />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Announcement breakdown */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">
+                  Announcements
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Published, draft, and pinned distribution
+                </CardDescription>
+              </div>
+              <span className="text-muted-foreground text-xs">
+                {dashboardData.announcements.length} total
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {hasAnnouncementBreakdownData ? (
+              <ChartContainer
+                config={announcementBreakdownChartConfig}
+                className="h-56 w-full"
+              >
+                <BarChart
+                  accessibilityLayer
+                  data={announcementBreakdownData}
+                  layout="vertical"
+                  margin={{ left: 4 }}
                 >
-                  <PieChart>
-                    <ChartTooltip
-                      content={
-                        <ChartTooltipContent
-                          hideLabel
-                          formatter={(value, name, item) => (
+                  <CartesianGrid
+                    horizontal={false}
+                    stroke="currentColor"
+                    strokeOpacity={0.06}
+                  />
+                  <XAxis
+                    type="number"
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    width={72}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        hideLabel
+                        formatter={(value, _name, item) => {
+                          const row = (
+                            item as { payload?: AnnouncementBreakdownRow }
+                          ).payload;
+                          return (
                             <div className="flex w-full items-center justify-between gap-3">
                               <span className="text-muted-foreground">
-                                {announcementStatusChartConfig[name as keyof typeof announcementStatusChartConfig]?.label ??
-                                  item.name}
+                                {row?.label ?? 'State'}
                               </span>
-                              <span className="font-medium tabular-nums">{Number(value).toLocaleString()}</span>
+                              <span className="font-medium tabular-nums">
+                                {Number(value).toLocaleString()}
+                              </span>
                             </div>
-                          )}
-                        />
-                      }
-                    />
-                    <Pie
-                      data={announcementStatusData}
-                      dataKey="value"
-                      nameKey="key"
-                      innerRadius={48}
-                      outerRadius={74}
-                      strokeWidth={2}
-                    >
-                      {announcementStatusData.map((entry) => (
-                        <Cell key={entry.key} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ChartContainer>
-                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                  {announcementStatusData.map((item) => (
-                    <DistributionStat
-                      key={item.key}
-                      label={item.label}
-                      value={item.value}
-                      fill={item.fill}
-                      percentage={
-                        dashboardData.announcements.length > 0
-                          ? Math.round((item.value / dashboardData.announcements.length) * 100)
-                          : 0
-                      }
-                    />
-                  ))}
-                </div>
-              </>
+                          );
+                        }}
+                      />
+                    }
+                  />
+                  <Bar dataKey="count" radius={6}>
+                    {announcementBreakdownData.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
             ) : (
-              <ChartEmptyState message="No announcements yet." />
+              <ChartEmpty message="No announcement data yet." />
             )}
           </CardContent>
         </Card>
       </div>
 
+      {/* ── Events & Schedule ──────────────────────────────────────────────── */}
+      <SectionHeading>Events &amp; Schedule</SectionHeading>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        {/* Upcoming events */}
+        <Card className="xl:col-span-2">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">
+                  Upcoming schedule
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Next events sorted by date
+                </CardDescription>
+              </div>
+              <div className="text-muted-foreground flex gap-3 text-xs">
+                <span>
+                  <span className="text-foreground font-medium">
+                    {eventsNext7Days.length}
+                  </span>{' '}
+                  this week
+                </span>
+                <span>
+                  <span className="text-foreground font-medium">
+                    {eventsNext30Days.length}
+                  </span>{' '}
+                  this month
+                </span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-1.5">
+            {nextEvents.length === 0 ? (
+              <ChartEmpty message="No upcoming events." className="h-48" />
+            ) : (
+              nextEvents.slice(0, 8).map((event) => (
+                <div
+                  key={event.id}
+                  className="hover:bg-muted/40 flex items-center justify-between rounded-lg border px-4 py-2.5 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {event.title}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {formatShortDate(event.start_at)}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'ml-3 shrink-0 text-xs',
+                      event.visibility === 'public'
+                        ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                        : '',
+                    )}
+                  >
+                    {formatStatus(event.visibility)}
+                  </Badge>
+                </div>
+              ))
+            )}
+            {nextEvents.length > 8 && (
+              <Link
+                href={`/home/projects/${projectId}/events`}
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 pt-1 text-xs transition-colors"
+              >
+                View all {nextEvents.length} events{' '}
+                <ArrowUpRight className="h-3 w-3" />
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Event visibility stats */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">
+              Visibility split
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Public vs private event ratio
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-muted-foreground">Public</span>
+                <span className="font-medium">
+                  {publicEventCount} ({publicEventRatio}%)
+                </span>
+              </div>
+              <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${publicEventRatio}%`,
+                    background: BLUE[500],
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 flex justify-between text-xs">
+                <span className="text-muted-foreground">Private</span>
+                <span className="font-medium">
+                  {privateEventCount} ({100 - publicEventRatio}%)
+                </span>
+              </div>
+              <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
+                <div
+                  className="bg-muted-foreground/30 h-full rounded-full"
+                  style={{ width: `${100 - publicEventRatio}%` }}
+                />
+              </div>
+            </div>
+            <div className="space-y-2.5 border-t pt-4">
+              <StatRow
+                label="Total events"
+                value={dashboardData.events.length}
+              />
+              <StatRow label="Next 7 days" value={eventsNext7Days.length} />
+              <StatRow label="Next 30 days" value={eventsNext30Days.length} />
+              <StatRow label="Public share" value={`${publicEventRatio}%`} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Edit form ──────────────────────────────────────────────────────── */}
       {editing && (
-        <Card className="border-border/70 shadow-sm">
+        <Card>
           <CardHeader>
-            <CardTitle>Edit Club</CardTitle>
-            <CardDescription>Update the basics that appear throughout the club dashboard.</CardDescription>
+            <CardTitle>Edit club</CardTitle>
+            <CardDescription>
+              Update the basics that appear throughout the club dashboard.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="proj-name">Club Name</Label>
+              <Label htmlFor="proj-name">Club name</Label>
               <Input
                 id="proj-name"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(e) => setName(e.target.value)}
                 placeholder="Club name"
               />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="proj-desc">Description</Label>
               <Textarea
                 id="proj-desc"
                 value={description}
-                onChange={(event) => setDescription(event.target.value)}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Club description"
                 rows={4}
               />
             </div>
-
             <div className="flex flex-wrap gap-2 pt-2">
-              <Button onClick={handleSaveChanges} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
+              <Button
+                onClick={handleSaveChanges}
+                disabled={saving}
+                style={{ background: BLUE[600] }}
+                className="border-0 text-white hover:opacity-90"
+              >
+                {saving ? 'Saving...' : 'Save changes'}
               </Button>
-              <Button onClick={cancelEditing} variant="outline" disabled={saving}>
+              <Button
+                onClick={cancelEditing}
+                variant="outline"
+                disabled={saving}
+              >
                 Cancel
               </Button>
             </div>
@@ -1190,36 +1796,91 @@ export function ProjectDetailContent({
         </Card>
       )}
 
-      
+      {/* ── Share dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share club</DialogTitle>
+            <DialogDescription>
+              Share a link to this club or copy the URL.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center gap-2">
+              <Input readOnly value={getShareUrl()} />
+              <Button variant="outline" onClick={() => void copyShareLink()}>
+                Copy
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void nativeShare()}>Share</Button>
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${project?.name ?? ''} ${getShareUrl()}`)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="outline">X / Twitter</Button>
+              </a>
+              <a
+                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrl())}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="outline">Facebook</Button>
+              </a>
+              <a
+                href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(getShareUrl())}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="outline">LinkedIn</Button>
+              </a>
+            </div>
+            <div className="flex items-center gap-4 pt-2">
+              <img
+                alt="QR code"
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(getShareUrl())}`}
+                className="rounded-md border"
+              />
+              <p className="text-muted-foreground text-sm">
+                Scan this QR code to open the club page.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
+      {/* ── Delete dialog ──────────────────────────────────────────────────── */}
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-destructive">Delete Club</DialogTitle>
+            <DialogTitle className="text-destructive">Delete club</DialogTitle>
             <DialogDescription>
-              This action cannot be undone. To confirm deletion, type the club name below.
+              This action cannot be undone. Type the club name to confirm.
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Club name to confirm</Label>
-              <p className="rounded-lg bg-muted px-3 py-2 text-sm font-semibold">
+              <p className="bg-muted rounded-lg px-3 py-2 text-sm font-semibold">
                 {project.name}
               </p>
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="delete-confirm">Type the club name to confirm</Label>
+              <Label htmlFor="delete-confirm">Type the club name</Label>
               <Input
                 id="delete-confirm"
                 placeholder="Enter club name"
                 value={deleteConfirmInput}
-                onChange={(event) => setDeleteConfirmInput(event.target.value)}
+                onChange={(e) => setDeleteConfirmInput(e.target.value)}
               />
             </div>
           </div>
-
           <DialogFooter>
             <Button
               variant="outline"
@@ -1229,11 +1890,11 @@ export function ProjectDetailContent({
               Cancel
             </Button>
             <Button
+              variant="destructive"
               onClick={handleDeleteProject}
               disabled={deleting || deleteConfirmInput !== project.name}
-              variant="destructive"
             >
-              {deleting ? 'Deleting...' : 'Delete Club'}
+              {deleting ? 'Deleting...' : 'Delete club'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1242,115 +1903,296 @@ export function ProjectDetailContent({
   );
 }
 
-function OverviewStatCard({
-  label,
-  value,
-  detail,
+// ─── Action Center ────────────────────────────────────────────────────────────
+
+function ActionCenter({
+  items,
+  dismissedIds,
+  onDismiss,
+  onUndismiss,
+  projectId,
 }: {
-  label: string;
-  value: number | string;
-  detail: string;
+  items: Array<{
+    id: string;
+    title: string;
+    description: string;
+    href: string;
+    count: number;
+    warn: boolean;
+  }>;
+  dismissedIds: Set<string>;
+  onDismiss: (id: string) => void;
+  onUndismiss: (id: string) => void;
+  projectId: string;
 }) {
-  return (
-    <Card className="border-border/70 shadow-sm">
-      <CardContent className="p-4">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">
-            {label}
+  const [showDismissed, setShowDismissed] = useState(false);
+  const visible = items.filter(
+    (item) => !dismissedIds.has(item.id) && item.count > 0,
+  );
+  const dismissed = items.filter(
+    (item) => dismissedIds.has(item.id) && item.count > 0,
+  );
+
+  if (visible.length === 0 && !showDismissed) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-900 dark:bg-emerald-950/40">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+            You're all caught up
           </p>
-          <p className="text-2xl font-semibold tracking-tight">{value}</p>
-          <p className="text-xs text-muted-foreground">{detail}</p>
+          <p className="text-xs text-emerald-600 dark:text-emerald-500">
+            No pending actions right now. Check back after your next session.
+          </p>
+          {dismissed.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowDismissed(true)}
+              className="mt-2 text-xs font-medium text-emerald-700 underline underline-offset-2 transition-colors hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+            >
+              Show dismissed ({dismissed.length})
+            </button>
+          ) : null}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-card overflow-hidden rounded-xl border shadow-sm">
+      <div className="flex items-center justify-between border-b bg-amber-50/60 px-5 py-3 dark:bg-amber-950/20">
+        <div className="flex items-center gap-2.5">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <p className="text-sm font-semibold">Action needed</p>
+        </div>
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-200 px-1.5 text-[10px] font-bold text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+          {visible.length}
+        </span>
+      </div>
+      <div className="divide-y">
+        {visible.map((item) => (
+          <div
+            key={item.id}
+            className="hover:bg-muted/30 flex items-center gap-4 px-5 py-3.5 transition-colors"
+          >
+            <div
+              className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                item.warn ? 'bg-amber-400' : 'bg-blue-400',
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{item.title}</p>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                {item.description}
+              </p>
+            </div>
+            <span
+              className={cn(
+                'flex h-6 shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums',
+                item.warn
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                  : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {item.count}
+            </span>
+            <Link
+              href={item.href}
+              className="flex shrink-0 items-center gap-0.5 text-xs font-medium transition-colors"
+              style={{ color: BLUE[600] }}
+            >
+              View <ArrowUpRight className="h-3 w-3" />
+            </Link>
+            <button
+              onClick={() => onDismiss(item.id)}
+              className="text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 rounded p-0.5 transition-colors"
+              aria-label={`Dismiss ${item.title}`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+        {showDismissed && dismissed.map((item) => (
+          <div
+            key={item.id}
+            className="bg-muted/20 flex items-center gap-4 px-5 py-3.5 opacity-80"
+          >
+            <div className="bg-muted-foreground/50 h-2 w-2 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{item.title}</p>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                {item.description}
+              </p>
+            </div>
+            <span className="bg-muted text-muted-foreground flex h-6 shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums">
+              {item.count}
+            </span>
+            <Link
+              href={item.href}
+              className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-0.5 text-xs font-medium transition-colors"
+            >
+              View <ArrowUpRight className="h-3 w-3" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => onUndismiss(item.id)}
+              className="text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-medium transition-colors"
+              aria-label={`Undismiss ${item.title}`}
+            >
+              Undismiss
+            </button>
+          </div>
+        ))}
+      </div>
+      {dismissed.length > 0 ? (
+        <div className="border-t px-5 py-2.5">
+          <button
+            type="button"
+            onClick={() => setShowDismissed((prev) => !prev)}
+            className="text-muted-foreground hover:text-foreground text-xs font-medium underline underline-offset-2 transition-colors"
+          >
+            {showDismissed
+              ? `Hide dismissed (${dismissed.length})`
+              : `Show dismissed (${dismissed.length})`}
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function HeroMetric({
+// ─── Small shared components ──────────────────────────────────────────────────
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <h2 className="text-foreground shrink-0 text-sm font-semibold">
+        {children}
+      </h2>
+      <div className="bg-border h-px flex-1" />
+    </div>
+  );
+}
+
+function KpiCard({
   label,
   value,
   detail,
+  up,
+  down,
 }: {
   label: string;
-  value: number | string;
+  value: string | number;
   detail: string;
+  up?: boolean;
+  down?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-background/80 p-4">
-      <div className="text-xs font-medium text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
-      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+    <div className="bg-card rounded-xl border px-4 py-3.5 shadow-sm">
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
+      <p
+        className={cn(
+          'mt-0.5 flex items-center gap-0.5 text-[11px]',
+          up
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : down
+              ? 'text-red-500'
+              : 'text-muted-foreground',
+        )}
+      >
+        {up && <TrendingUp className="h-3 w-3" />}
+        {down && <TrendingDown className="h-3 w-3" />}
+        {detail}
+      </p>
     </div>
   );
 }
 
-function HeaderStat({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-right">
-      <div className="text-xs font-medium text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 text-sm font-semibold text-foreground">{value}</div>
-    </div>
-  );
-}
-
-function DistributionStat({
-  label,
-  value,
-  fill,
-  percentage,
+function ChartEmpty({
+  message,
+  className,
 }: {
-  label: string;
-  value: number;
-  fill: string;
-  percentage: number;
+  message: string;
+  className?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border/70 px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: fill }} />
-          <span className="text-sm font-medium">{label}</span>
-        </div>
-        <span className="text-sm font-medium text-muted-foreground">{percentage}%</span>
-      </div>
-      <div className="mt-2 text-xl font-semibold tracking-tight">{value}</div>
-    </div>
-  );
-}
-
-function ChartEmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex h-80 items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/20 px-6 text-center text-sm text-muted-foreground">
+    <div
+      className={cn(
+        'text-muted-foreground flex h-64 items-center justify-center rounded-lg border border-dashed text-center text-sm',
+        className,
+      )}
+    >
       {message}
     </div>
   );
 }
 
-function buildOverviewSummary(params: {
-  clubName: string;
-  studentCount: number;
-  collaboratorCount: number;
-  announcementCount: number;
-  eventCount: number;
+function StatRow({
+  label,
+  value,
+  positive,
+  warn,
+}: {
+  label: string;
+  value: string | number;
+  positive?: boolean;
+  warn?: boolean;
 }) {
-  const { clubName, studentCount, collaboratorCount, announcementCount, eventCount } = params;
-
-  if (studentCount === 0 && collaboratorCount === 0 && announcementCount === 0 && eventCount === 0) {
-    return `${clubName} is ready to publish, schedule, and track attendance.`;
-  }
-
-  return `${studentCount} student${pluralize(studentCount)}, ${collaboratorCount} collaborator${pluralize(collaboratorCount)}, ${eventCount} event${pluralize(eventCount)}, ${announcementCount} live announcement${pluralize(announcementCount)}.`;
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span
+        className={cn(
+          'font-medium tabular-nums',
+          positive
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : warn
+              ? 'text-amber-600 dark:text-amber-400'
+              : '',
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
-function buildActivityChartData(
+function PeriodSelect({
+  value,
+  onChange,
+  excludeSession,
+}: {
+  value: string;
+  onChange: (v: 'session' | 'daily' | 'weekly' | 'monthly') => void;
+  excludeSession?: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) =>
+        onChange(e.target.value as 'session' | 'daily' | 'weekly' | 'monthly')
+      }
+      className="text-muted-foreground rounded-md border bg-transparent px-2 py-1 text-xs focus:outline-none"
+    >
+      {!excludeSession && <option value="session">By session</option>}
+      <option value="daily">Daily</option>
+      <option value="weekly">Weekly</option>
+      <option value="monthly">Monthly</option>
+    </select>
+  );
+}
+
+// ─── Data builders ────────────────────────────────────────────────────────────
+
+function buildActivityTrendData(
   announcements: Announcement[],
   events: EventRecord[],
   sessions: AttendanceSessionRecord[],
-): ActivityChartRow[] {
+): ActivityTrendRow[] {
   const months = buildRecentMonthBuckets(6);
   const byMonth = new Map(
     months.map((row) => [
@@ -1359,319 +2201,215 @@ function buildActivityChartData(
     ]),
   );
 
-  announcements.forEach((announcement) => {
-    const key = monthKeyFromValue(announcement.published_at || announcement.created_at);
-    if (!key || !byMonth.has(key)) return;
-
-    const current = byMonth.get(key)!;
-    current.announcements += 1;
-    current.total += 1;
+  announcements.forEach((a) => {
+    const key = monthKeyFromValue(a.published_at ?? a.created_at);
+    if (!key) return;
+    const row = byMonth.get(key);
+    if (!row) return;
+    row.announcements++;
+    row.total++;
+  });
+  events.forEach((e) => {
+    const key = monthKeyFromValue(e.start_at ?? e.created_at);
+    if (!key) return;
+    const row = byMonth.get(key);
+    if (!row) return;
+    row.events++;
+    row.total++;
+  });
+  sessions.forEach((s) => {
+    const key = monthKeyFromValue(s.created_at ?? s.meeting_date);
+    if (!key) return;
+    const row = byMonth.get(key);
+    if (!row) return;
+    row.sessions++;
+    row.total++;
   });
 
-  events.forEach((event) => {
-    const key = monthKeyFromValue(event.start_at || event.created_at);
-    if (!key || !byMonth.has(key)) return;
-
-    const current = byMonth.get(key)!;
-    current.events += 1;
-    current.total += 1;
-  });
-
-  sessions.forEach((session) => {
-    const key = monthKeyFromValue(session.created_at || session.meeting_date);
-    if (!key || !byMonth.has(key)) return;
-
-    const current = byMonth.get(key)!;
-    current.sessions += 1;
-    current.total += 1;
-  });
-
-  return months.map((row) => byMonth.get(row.key)!);
+  return months.map((m) => byMonth.get(m.key)!);
 }
 
-function buildGrowthChartData(
-  students: StudentProfile[],
-  collaborators: ProjectMember[],
-): GrowthChartRow[] {
-  const months = buildRecentMonthBuckets(6);
-
-  return months.map((month) => {
-    const monthEnd = endOfMonthFromKey(month.key);
-    const studentCount = students.filter((student) => {
-      const time = parseDateValue(student.joined_at);
-      return time != null && time <= monthEnd.getTime();
-    }).length;
-
-    const collaboratorCount = collaborators.filter((member) => {
-      const time = parseDateValue(member.joined_at || member.created_at);
-      return time != null && time <= monthEnd.getTime();
-    }).length;
-
-    return {
-      ...month,
-      students: studentCount,
-      collaborators: collaboratorCount,
-      totalPeople: studentCount + collaboratorCount,
-    };
-  });
-}
-
-function buildPublishingPipelineData(values: {
-  publishedAnnouncements: number;
-  draftAnnouncements: number;
-  publicEvents: number;
-  privateEvents: number;
-  publicMeetings: number;
-  pendingInvites: number;
-}): PipelineRow[] {
+function buildAttendanceMixData(
+  rows: AttendanceChartRow[],
+): AttendanceMixRow[] {
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.present += row.present;
+      acc.late += row.late;
+      acc.excused += row.excused;
+      acc.absent += row.absent;
+      return acc;
+    },
+    { present: 0, late: 0, excused: 0, absent: 0 },
+  );
   return [
     {
-      key: 'published-announcements',
-      label: 'Published',
-      value: values.publishedAnnouncements,
-      fill: 'var(--primary)',
+      key: 'present',
+      label: 'Present',
+      count: totals.present,
+      fill: STATUS_COLORS.present,
     },
     {
-      key: 'draft-announcements',
-      label: 'Drafts',
-      value: values.draftAnnouncements,
-      fill: 'var(--chart-5)',
+      key: 'late',
+      label: 'Late',
+      count: totals.late,
+      fill: STATUS_COLORS.late,
     },
     {
-      key: 'public-events',
-      label: 'Public events',
-      value: values.publicEvents,
-      fill: 'var(--chart-2)',
+      key: 'excused',
+      label: 'Excused',
+      count: totals.excused,
+      fill: STATUS_COLORS.excused,
     },
     {
-      key: 'private-events',
-      label: 'Private events',
-      value: values.privateEvents,
-      fill: 'var(--chart-4)',
-    },
-    {
-      key: 'public-meetings',
-      label: 'Public meetings',
-      value: values.publicMeetings,
-      fill: '#0f766e',
-    },
-    {
-      key: 'pending-invites',
-      label: 'Pending invites',
-      value: values.pendingInvites,
-      fill: '#e11d48',
+      key: 'absent',
+      label: 'Absent',
+      count: totals.absent,
+      fill: STATUS_COLORS.absent,
     },
   ];
 }
 
-function buildAnnouncementStatusData(values: {
-  total: number;
-  published: number;
-  drafts: number;
-}): AnnouncementStatusRow[] {
-  const other = Math.max(values.total - values.published - values.drafts, 0);
+function buildRosterGrowthData(
+  students: StudentProfile[],
+  collaborators: ProjectMember[],
+): RosterGrowthRow[] {
+  return buildRecentMonthBuckets(6).map((month) => {
+    const monthEnd = endOfMonthFromKey(month.key);
+    const studentsCount = students.filter((s) => {
+      const t = parseDateValue(s.joined_at);
+      return t != null && t <= monthEnd.getTime();
+    }).length;
+    const collaboratorsCount = collaborators.filter((m) => {
+      const t = parseDateValue(m.joined_at ?? m.created_at);
+      return t != null && t <= monthEnd.getTime();
+    }).length;
+    return {
+      ...month,
+      students: studentsCount,
+      collaborators: collaboratorsCount,
+      totalPeople: studentsCount + collaboratorsCount,
+    };
+  });
+}
 
+function buildAnnouncementBreakdownData({
+  announcements,
+  publishedCount,
+  draftCount,
+  pinnedCount,
+}: {
+  announcements: Announcement[];
+  publishedCount: number;
+  draftCount: number;
+  pinnedCount: number;
+}): AnnouncementBreakdownRow[] {
+  const otherCount = Math.max(
+    announcements.length - publishedCount - draftCount,
+    0,
+  );
   return [
     {
       key: 'published',
       label: 'Published',
-      value: values.published,
-      fill: 'var(--primary)',
+      count: publishedCount,
+      fill: BLUE[600],
     },
-    {
-      key: 'draft',
-      label: 'Drafts',
-      value: values.drafts,
-      fill: 'var(--chart-5)',
-    },
-    {
-      key: 'other',
-      label: 'Other',
-      value: other,
-      fill: 'var(--chart-4)',
-    },
+    { key: 'draft', label: 'Drafts', count: draftCount, fill: '#d97706' },
+    { key: 'pinned', label: 'Pinned', count: pinnedCount, fill: BLUE[400] },
+    { key: 'other', label: 'Other', count: otherCount, fill: '#9ca3af' },
   ];
 }
 
-function buildWeeklyUpcomingEventsData(events: EventRecord[], weeks: number): WeeklyEventsRow[] {
-  const start = startOfWeek(new Date());
-  const formatter = new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-
-  const buckets = Array.from({ length: weeks }, (_, index) => {
-    const weekStart = new Date(start);
-    weekStart.setDate(start.getDate() + index * 7);
-
-    return {
-      key: weekKeyFromDate(weekStart),
-      week: `W${index + 1}`,
-      fullLabel: `Week of ${formatter.format(weekStart)}`,
-      publicEvents: 0,
-      privateEvents: 0,
-      total: 0,
-    };
-  });
-
-  const byWeek = new Map(buckets.map((bucket) => [bucket.key, { ...bucket }]));
-
-  events.forEach((event) => {
-    const time = parseDateValue(event.start_at);
-    if (time == null) return;
-
-    const key = weekKeyFromDate(new Date(time));
-    const bucket = byWeek.get(key);
-    if (!bucket) return;
-
-    if (event.visibility === 'public') {
-      bucket.publicEvents += 1;
-    } else {
-      bucket.privateEvents += 1;
-    }
-
-    bucket.total += 1;
-  });
-
-  return buckets.map((bucket) => byWeek.get(bucket.key) ?? bucket);
-}
+// ─── Utility functions ────────────────────────────────────────────────────────
 
 function buildRecentMonthBuckets(length: number) {
-  const monthFormatter = new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-  });
-  const fullMonthFormatter = new Intl.DateTimeFormat(undefined, {
+  const short = new Intl.DateTimeFormat(undefined, { month: 'short' });
+  const long = new Intl.DateTimeFormat(undefined, {
     month: 'long',
     year: 'numeric',
   });
-
-  return Array.from({ length }, (_, index) => {
-    const date = new Date();
-    date.setDate(1);
-    date.setHours(0, 0, 0, 0);
-    date.setMonth(date.getMonth() - (length - 1 - index));
-
+  return Array.from({ length }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    d.setMonth(d.getMonth() - (length - 1 - i));
     return {
-      key: monthKeyFromDate(date),
-      month: monthFormatter.format(date),
-      fullLabel: fullMonthFormatter.format(date),
+      key: monthKeyFromDate(d),
+      month: short.format(d),
+      fullLabel: long.format(d),
     };
   });
 }
 
 function endOfMonthFromKey(key: string) {
-  const [yearText, monthText] = key.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  return new Date(year, month, 0, 23, 59, 59, 999);
+  const [y, m] = key.split('-');
+  return new Date(Number(y), Number(m), 0, 23, 59, 59, 999);
 }
 
-function startOfWeek(date: Date) {
-  const result = new Date(date);
-  const day = result.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  result.setDate(result.getDate() + diff);
-  result.setHours(0, 0, 0, 0);
-  return result;
-}
-
-function weekKeyFromDate(date: Date) {
-  const weekStart = startOfWeek(date);
-  return `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(
-    weekStart.getDate(),
-  ).padStart(2, '0')}`;
-}
-
-function countRecentDates(values: Array<string | null | undefined>, days: number) {
-  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-
-  return values.reduce((count, value) => {
-    const time = parseDateValue(value ?? null);
-    return time != null && time >= cutoff ? count + 1 : count;
-  }, 0);
-}
-
-function isWithinDays(value: string | null, days: number) {
-  const time = parseDateValue(value);
-  if (time == null) return false;
-
-  const now = Date.now();
-  const futureLimit = now + days * 24 * 60 * 60 * 1000;
-  return time >= now && time <= futureLimit;
-}
-
-function parseDateValue(value: string | null) {
+function monthKeyFromValue(value: string | null | undefined) {
   if (!value) return null;
-  const time = new Date(value).getTime();
-  return Number.isNaN(time) ? null : time;
-}
-
-function monthKeyFromValue(value: string | null) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return monthKeyFromDate(date);
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : monthKeyFromDate(d);
 }
 
 function monthKeyFromDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function formatSessionTick(dateValue: string) {
-  const parsed = new Date(dateValue);
-  if (Number.isNaN(parsed.getTime())) return dateValue;
+function countRecentDates(
+  values: Array<string | null | undefined>,
+  days: number,
+) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return values.reduce((count, v) => {
+    const t = parseDateValue(v ?? null);
+    return t != null && t >= cutoff ? count + 1 : count;
+  }, 0);
+}
 
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
+function isWithinDays(value: string | null, days: number) {
+  const t = parseDateValue(value);
+  if (t == null) return false;
+  const now = Date.now();
+  return t >= now && t <= now + days * 24 * 60 * 60 * 1000;
+}
+
+function parseDateValue(value: string | null) {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function formatSessionTick(dateValue: string) {
+  const d = new Date(dateValue);
+  return Number.isNaN(d.getTime())
+    ? dateValue
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function formatShortDate(value: string | null) {
   if (!value) return 'Unknown';
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Unknown';
-
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const d = new Date(value);
+  return Number.isNaN(d.getTime())
+    ? 'Unknown'
+    : d.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
 }
 
 function formatStatus(value: string | null | undefined) {
   if (!value) return 'Active';
-
   return value
     .split('_')
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(' ');
-}
-
-function projectStatusClass(status: string | null | undefined) {
-  if (status === 'active') return 'border-transparent bg-green-50 text-green-700';
-  if (status === 'off' || status === 'paused' || status === 'archived') {
-    return 'border-transparent bg-red-50 text-red-700';
-  }
-  if (status === 'deploying' || status === 'coming_up' || status === 'restoring') {
-    return 'border-slate-200 bg-white text-slate-900';
-  }
-  return 'border-border bg-background text-muted-foreground';
 }
 
 function formatDelta(value: number) {
   if (value === 0) return 'No change';
-  return `${value > 0 ? '+' : ''}${value} pts`;
-}
-
-function getUserEmail(user: unknown) {
-  if (!user || typeof user !== 'object') return 'Unknown account';
-  const email = 'email' in user ? user.email : undefined;
-  return typeof email === 'string' && email.length > 0 ? email : 'Unknown account';
-}
-
-function pluralize(value: number) {
-  return value === 1 ? '' : 's';
+  return `${value > 0 ? '+' : ''}${value} pts vs prev`;
 }

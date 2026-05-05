@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 
 import { getSupabaseServerClient } from '@kit/supabase/server-client';
@@ -47,6 +48,32 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
   }
 
   return NextResponse.json({ announcement: data }, { status: 200 });
+}
+
+export async function DELETE(_request: Request, context: ProjectRouteContext) {
+  const { id: projectId, announcementId } = await context.params;
+  const authorization = await authorizeProjectManager(projectId);
+
+  if ('response' in authorization) {
+    return authorization.response;
+  }
+
+  const { client } = authorization;
+  const { error } = await (client as any)
+    .from('announcements')
+    .delete()
+    .eq('id', announcementId)
+    .eq('project_id', projectId);
+
+  if (error) {
+    console.error('Failed to delete announcement', { projectId, announcementId, error });
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete announcement' },
+      { status: 400 },
+    );
+  }
+
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
 
 async function authorizeProjectManager(projectId: string) {

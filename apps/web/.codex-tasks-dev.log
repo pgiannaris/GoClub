@@ -1,0 +1,34 @@
+
+> web@0.1.0 dev C:\Users\panit\Desktop\GoClubV1\apps\web
+> pnpm with-env next dev --turbo | pino-pretty -c "--" "--port" "3001"
+
+
+> web@0.1.0 with-env C:\Users\panit\Desktop\GoClubV1\apps\web
+> dotenv -e ./.env.local -- "next" "dev" "--turbo"
+
+   ▲ Next.js 15.5.9 (Turbopack)
+   - Local:        http://localhost:3001
+   - Network:      http://172.16.0.2:3001
+   - Environments: .env.development, .env
+   - Experiments (use with caution):
+     ✓ mdxRs
+     · turbo
+     ⨯ reactCompiler
+     · ...
+
+ ✓ Starting...
+Creating turbopack project {
+  dir: 'C:\\Users\\panit\\Desktop\\GoClubV1\\apps\\web',
+  testMode: true
+}
+ ✓ Compiled instrumentation Node.js in 21ms
+ ✓ Compiled instrumentation Edge in 34ms
+ ○ Compiling middleware ...
+ ✓ Compiled middleware in 799ms
+ ✓ Ready in 5s
+ ✓ Compiled instrumentation Node.js in 6ms
+ ✓ Compiled instrumentation Edge in 21ms
+ ✓ Compiled middleware in 4ms
+C:\Users\panit\Desktop\GoClubV1\apps\web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  web@0.1.0 dev: `pnpm with-env next dev --turbo | pino-pretty -c "--" "--port" "3001"`
+Exit status 1073807364

@@ -6,7 +6,8 @@ export type BlockType =
   | 'events'
   | 'members'
   | 'polls'
-  | 'attendance';
+  | 'attendance'
+  | 'tasks';
 
 export type Block = {
   id: string;

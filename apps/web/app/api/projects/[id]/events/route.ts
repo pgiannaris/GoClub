@@ -114,6 +114,8 @@ export async function POST(request: Request, context: ProjectRouteContext) {
     );
   }
 
+  void dispatchProjectWebhook(adminClient, projectId, 'event.created', data);
+
   return NextResponse.json({ event: data }, { status: 200 });
 }
 
@@ -244,6 +246,42 @@ function normalizeEventStatus(value: unknown) {
 function normalizeEventVisibility(value: unknown) {
   if (value === 'members') return value;
   return 'public';
+}
+
+async function dispatchProjectWebhook(
+  adminClient: any,
+  projectId: string,
+  eventType: string,
+  eventPayload: unknown,
+) {
+  const { data: project } = await (adminClient as any)
+    .from('projects')
+    .select('id, webhook_url, api_key')
+    .eq('id', projectId)
+    .maybeSingle();
+
+  const webhookUrl = project?.webhook_url as string | null | undefined;
+  if (!webhookUrl) return;
+
+  const apiKey = project?.api_key as string | null | undefined;
+
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        type: eventType,
+        projectId,
+        timestamp: new Date().toISOString(),
+        payload: eventPayload,
+      }),
+    });
+  } catch (error) {
+    console.error('Failed to dispatch project webhook', { projectId, webhookUrl, error });
+  }
 }
 
 async function getProjectEventRsvpStats(

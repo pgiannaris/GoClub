@@ -1,0 +1,10 @@
+[build]
+  command = "pnpm --filter web build"
+
+[build.environment]
+  NODE_VERSION = "20.10"
+
+[dev]
+  command = "pnpm --filter web dev"
+  port = 3000
+  targetPort = 3000

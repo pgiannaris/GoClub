@@ -3,14 +3,27 @@ import { cn } from '../lib/utils';
 export function Spinner(
   props: React.PropsWithChildren<{
     className?: string;
+    size?: 'sm' | 'md' | 'lg';
   }>,
 ) {
+  const sizeClass =
+    props.size === 'sm'
+      ? 'h-6 w-6'
+      : props.size === 'lg'
+        ? 'h-10 w-10'
+        : 'h-8 w-8';
+
   return (
-    <div role="status">
+    <div
+      role="status"
+      className={cn('flex items-center justify-center', props.className)}
+    >
       <svg
         aria-hidden="true"
         className={cn(
-          `fill-primary-foreground text-primary dark:fill-primary dark:text-primary/30 h-8 w-8 animate-spin`,
+          `fill-primary-foreground text-primary dark:fill-primary dark:text-primary/30 ${sizeClass} animate-spin`,
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore - allow pass-through className
           props.className,
         )}
         viewBox="0 0 100 101"

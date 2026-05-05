@@ -4,7 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 
 import Link from 'next/link';
 
-import { Plus } from 'lucide-react';
+import {
+  ChevronDown,
+  MoreHorizontal,
+  Plus,
+  Settings,
+  SquareCheckBig,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSupabase } from '@kit/supabase/hooks/use-supabase';
@@ -19,11 +27,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@kit/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@kit/ui/dropdown-menu';
 import { Input } from '@kit/ui/input';
 import { Label } from '@kit/ui/label';
 import { Spinner } from '@kit/ui/spinner';
 import { Textarea } from '@kit/ui/textarea';
 import { cn } from '@kit/ui/utils';
+
+import { AppLogo } from '~/components/app-logo';
 
 export default function MainPageDashboard() {
   const supabase = useSupabase();
@@ -36,9 +54,16 @@ export default function MainPageDashboard() {
   const [loading, setLoading] = useState(true);
   const [emptyStateReady, setEmptyStateReady] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [ownedOnly, setOwnedOnly] = useState(false);
+  const [collaboratorOnly, setCollaboratorOnly] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [actingInviteId, setActingInviteId] = useState<string | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<any | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
+    null,
+  );
+  const [confirmName, setConfirmName] = useState('');
 
   // Fetch projects for the current user
   const fetchProjects = async () => {
@@ -46,7 +71,6 @@ export default function MainPageDashboard() {
     try {
       const { data: userRes } = await supabase.auth.getUser();
       const userId = userRes.user?.id;
-
       if (!userId) return;
       setCurrentUserId(userId);
 
@@ -147,13 +171,11 @@ export default function MainPageDashboard() {
         ...((ownedProjects ?? []) as any[]),
         ...((memberProjectsResponse.data ?? []) as any[]),
       ];
-
-      setProjects(
-        combinedProjects.filter(
-          (project, index, array) =>
-            array.findIndex((item) => item.id === project.id) === index,
-        ),
+      const dedupedProjects = combinedProjects.filter(
+        (project, index, array) =>
+          array.findIndex((item) => item.id === project.id) === index,
       );
+      setProjects(dedupedProjects);
       setPendingInvites(
         ((inviteRows ?? []) as any[]).map((invite) => ({
           ...invite,
@@ -182,11 +204,26 @@ export default function MainPageDashboard() {
     return () => window.clearTimeout(timeoutId);
   }, [loading, projects.length]);
 
+  // Reset the typed confirmation when the dialog opens/closes or target changes
+  useEffect(() => {
+    setConfirmName('');
+  }, [projectToDelete]);
+
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredProjects = useMemo(() => {
-    if (!normalizedQuery) return projects;
+    let result = projects.slice();
 
-    return projects.filter((project) => {
+    if (ownedOnly && currentUserId) {
+      result = result.filter((p) => p.owner_id === currentUserId);
+    }
+
+    if (collaboratorOnly && currentUserId) {
+      result = result.filter((p) => p.owner_id !== currentUserId);
+    }
+
+    if (!normalizedQuery) return result;
+
+    return result.filter((project) => {
       const searchable = [
         project.name,
         project.description,
@@ -201,7 +238,7 @@ export default function MainPageDashboard() {
 
       return searchable.includes(normalizedQuery);
     });
-  }, [projects, normalizedQuery]);
+  }, [projects, normalizedQuery, ownedOnly, collaboratorOnly, currentUserId]);
 
   const formatStatus = (status?: string | null) => {
     if (!status) return 'Unknown';
@@ -215,7 +252,7 @@ export default function MainPageDashboard() {
   const statusBadgeClass = (status?: string | null) => {
     switch (status) {
       case 'active':
-        return 'border-transparent bg-green-50 text-green-700';
+        return ' text-green-700';
       case 'off':
       case 'paused':
       case 'archived':
@@ -326,6 +363,80 @@ export default function MainPageDashboard() {
     }
   };
 
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) {
+      return;
+    }
+
+    if (confirmName !== projectToDelete.name) {
+      toast.error('Please type the club name to confirm deletion');
+      return;
+    }
+
+    setDeletingProjectId(projectToDelete.id);
+
+    try {
+      const { error } = await (supabase as any)
+        .from('projects')
+        .delete()
+        .eq('id', projectToDelete.id);
+
+      if (error) {
+        console.error('Delete project error:', error);
+        toast.error('Failed to delete club');
+        return;
+      }
+
+      toast.success('Club deleted');
+      setProjects((current) =>
+        current.filter((project) => project.id !== projectToDelete.id),
+      );
+      setProjectToDelete(null);
+      setConfirmName('');
+    } catch (error) {
+      console.error('Delete project error:', error);
+      toast.error('Failed to delete club');
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
+
+  const getShareUrl = (project: any) => {
+    try {
+      const origin = window.location?.origin ?? '';
+      return `${origin}/home/projects/${project.id}`;
+    } catch (e) {
+      return `/home/projects/${project.id}`;
+    }
+  };
+
+  const copyShareLink = async (project: any) => {
+    const url = getShareUrl(project);
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard');
+    } catch (err) {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const nativeShare = async (project: any) => {
+    const url = getShareUrl(project);
+    if ((navigator as any).share) {
+      try {
+        await (navigator as any).share({
+          title: project.name,
+          text: project.description || project.name,
+          url,
+        });
+      } catch (err) {
+        // user canceled or failed
+      }
+    } else {
+      toast('Sharing not supported on this device');
+    }
+  };
+
   return (
     <div className="bg-background flex min-h-screen flex-col">
       {/* Header */}
@@ -403,9 +514,74 @@ export default function MainPageDashboard() {
           />
         </div>
 
-        <button className="text-muted-foreground hover:bg-muted cursor-pointer rounded-md border px-3 py-2 text-sm">
-          Filter
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="text-muted-foreground hover:bg-muted inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm">
+              Filter
+              <ChevronDown className="ml-2 h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent align="end" className="min-w-40">
+            <DropdownMenuCheckboxItem
+              checked={ownedOnly}
+              onSelect={(e) => {
+                e.preventDefault?.();
+                setOwnedOnly((v) => !v);
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <span className="bg-background text-foreground border-foreground/40 flex h-4 w-4 items-center justify-center rounded-sm border-2">
+                  {ownedOnly ? (
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                    >
+                      <path
+                        d="M20 6L9 17l-5-5"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+                <span>Owned</span>
+              </span>
+            </DropdownMenuCheckboxItem>
+
+            <DropdownMenuCheckboxItem
+              checked={collaboratorOnly}
+              onSelect={(e) => {
+                e.preventDefault?.();
+                setCollaboratorOnly((v) => !v);
+              }}
+            >
+              <span className="flex items-center gap-2">
+                <span className="bg-background text-foreground border-foreground/40 flex h-4 w-4 items-center justify-center rounded-sm border-2">
+                  {collaboratorOnly ? (
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                    >
+                      <path
+                        d="M20 6L9 17l-5-5"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : null}
+                </span>
+                <span>Collaborator</span>
+              </span>
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {pendingInvites.length > 0 && (
@@ -462,47 +638,87 @@ export default function MainPageDashboard() {
       )}
 
       {/* Projects grid */}
-      <div className="grid grid-cols-1 gap-6 px-10 pb-10 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-6 px-10 pb-10 md:grid-cols-2 xl:grid-cols-3">
         {loading ? (
           <div className="col-span-full flex min-h-[260px] items-center justify-center">
-            <div className="bg-card flex min-h-[180px] w-full max-w-md flex-col items-center justify-center gap-3 rounded-xl border p-6">
-              <Spinner className="h-6 w-6" />
-              <p className="text-muted-foreground text-sm font-medium">
-                Loading...
-              </p>
-            </div>
+            <DashboardLogoLoader label="Loading clubs..." />
           </div>
         ) : projects.length === 0 ? (
           emptyStateReady ? (
             <p className="font-semibold">No clubs yet</p>
           ) : (
             <div className="col-span-full flex min-h-[260px] items-center justify-center">
-              <div className="bg-card flex min-h-[180px] w-full max-w-md flex-col items-center justify-center gap-3 rounded-xl border p-6">
-                <Spinner className="h-6 w-6" />
-                <p className="text-muted-foreground text-sm font-medium">
-                  Checking clubs...
-                </p>
-              </div>
+              <DashboardLogoLoader label="Checking clubs..." />
             </div>
           )
         ) : filteredProjects.length === 0 ? (
-          <p className="text-muted-foreground">
-            No clubs match "{searchQuery.trim()}"
-          </p>
+          <p className="text-muted-foreground">No clubs match</p>
         ) : (
           filteredProjects.map((project) => (
-            <Link
+            <div
               key={project.id}
-              href={`/home/projects/${project.id}`}
-              className="block"
+              className="group bg-card hover:border-primary relative min-h-64 overflow-hidden rounded-lg border transition-all duration-200 hover:shadow-sm"
             >
-              <div className="bg-card hover:border-primary cursor-pointer rounded-xl border p-5 transition">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-foreground font-medium">
+              <div className="absolute top-6 right-6 z-20 flex shrink-0 items-center gap-2">
+                {/* Delete moved into the actions menu */}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Open actions for ${project.name}`}
+                      className="text-muted-foreground hover:bg-muted hover:text-foreground bg-background/90 inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href={`/home/projects/${project.id}/settings`}
+                        className="flex items-center gap-2"
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span>Club settings</span>
+                      </Link>
+                    </DropdownMenuItem>
+
+                    {project.owner_id === currentUserId ? (
+                      <DropdownMenuItem asChild>
+                        <button
+                          type="button"
+                          className="text-destructive flex w-full items-center gap-2"
+                          onClick={() => setProjectToDelete(project)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span>Delete club</span>
+                        </button>
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              <Link
+                href={`/home/projects/${project.id}`}
+                className="flex h-full flex-col p-6 pr-20"
+                aria-label={`Open ${project.name}`}
+              >
+                <div className="mb-5 min-w-0 flex-1">
+                  <h3 className="text-foreground mb-2 line-clamp-2 pr-2 text-2xl leading-tight font-semibold">
                     {project.name}
                   </h3>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={
+                        project.owner_id === currentUserId
+                          ? 'text-blue-500'
+                          : 'text-white'
+                      }
+                    >
                       {project.owner_id === currentUserId
                         ? 'Owner'
                         : 'Collaborator'}
@@ -516,41 +732,117 @@ export default function MainPageDashboard() {
                   </div>
                 </div>
 
-                {project.description && (
-                  <p className="text-muted-foreground mb-4 text-sm">
-                    {project.description}
-                  </p>
-                )}
-                <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                  {project.plan_type && (
-                    <span>
-                      <span className="text-foreground/70 font-medium">
-                        Plan:
-                      </span>{' '}
+                <p className="text-muted-foreground line-clamp-3 min-h-[60px] text-sm leading-6">
+                  {project.description?.trim() ||
+                    'No description yet. Add a short summary so collaborators can tell what this club is for at a glance.'}
+                </p>
+
+                <div className="text-muted-foreground mt-5 flex flex-wrap gap-2 text-xs">
+                  {project.plan_type ? (
+                    <span className="rounded-md border px-2 py-1">
                       {project.plan_type}
                     </span>
-                  )}
-                  {project.provider && (
-                    <span>
-                      <span className="text-foreground/70 font-medium">
-                        Provider:
-                      </span>{' '}
+                  ) : null}
+                  {project.provider ? (
+                    <span className="rounded-md border px-2 py-1">
                       {project.provider}
                     </span>
-                  )}
-                  {project.region && (
-                    <span>
-                      <span className="text-foreground/70 font-medium">
-                        Region:
-                      </span>{' '}
+                  ) : null}
+                  {project.region ? (
+                    <span className="rounded-md border px-2 py-1">
                       {project.region}
                     </span>
-                  )}
+                  ) : null}
+                  <span className="rounded-md border px-2 py-1">
+                    Created {formatDateLabel(project.created_at)}
+                  </span>
                 </div>
-              </div>
-            </Link>
+              </Link>
+            </div>
           ))
         )}
+      </div>
+
+      <Dialog
+        open={Boolean(projectToDelete)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !deletingProjectId) {
+            setProjectToDelete(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete club?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{' '}
+              <span className="text-foreground font-medium">
+                {projectToDelete?.name ?? 'this club'}
+              </span>
+              ? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="confirm-name">
+                Type the club name to confirm
+              </Label>
+              <Input
+                id="confirm-name"
+                placeholder={projectToDelete?.name ?? ''}
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setProjectToDelete(null)}
+              disabled={Boolean(deletingProjectId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmDeleteProject()}
+              disabled={
+                Boolean(deletingProjectId) ||
+                confirmName !== projectToDelete?.name
+              }
+            >
+              {deletingProjectId ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) return 'recently';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'recently';
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date);
+}
+
+function DashboardLogoLoader({ label }: { label: string }) {
+  return (
+    <div className="col-span-full flex min-h-[220px] items-center justify-center">
+      <div className="bg-card flex w-full max-w-md flex-col items-center justify-center rounded-xl border px-6 py-8">
+        <Spinner />
+        <p className="text-muted-foreground mt-5 text-sm font-medium">
+          {label}
+        </p>
       </div>
     </div>
   );

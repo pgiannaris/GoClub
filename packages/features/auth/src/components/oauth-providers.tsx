@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 
 import type { Provider } from '@supabase/supabase-js';
 
+import { getRedirectURL } from '@kit/supabase/get-redirect-url';
 import { useSignInWithProvider } from '@kit/supabase/hooks/use-sign-in-with-provider';
 import { If } from '@kit/ui/if';
 import { LoadingOverlay } from '@kit/ui/loading-overlay';
@@ -71,19 +72,19 @@ export function OauthProviders(props: {
                 key={provider}
                 providerId={provider}
                 onClick={() => {
-                  const origin = window.location.origin;
                   const queryParams = new URLSearchParams();
 
                   if (props.paths.returnPath) {
                     queryParams.set('next', props.paths.returnPath);
                   }
 
-                  const redirectPath = [
-                    props.paths.callback,
-                    queryParams.toString(),
-                  ].join('?');
+                  const callbackUrl = new URL(getRedirectURL(props.paths.callback));
 
-                  const redirectTo = [origin, redirectPath].join('');
+                  if (queryParams.size > 0) {
+                    callbackUrl.search = queryParams.toString();
+                  }
+
+                  const redirectTo = callbackUrl.toString();
                   const scopesOpts = OAUTH_SCOPES[provider] ?? {};
 
                   const credentials = {

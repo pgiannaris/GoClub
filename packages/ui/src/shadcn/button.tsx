@@ -13,6 +13,16 @@ const buttonVariants = cva(
       variant: {
         default:
           'bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs',
+        success:
+          'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs',
+        successOutline:
+          'border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 shadow-xs',
+        warning:
+          'bg-amber-500 text-white hover:bg-amber-600 shadow-xs',
+        warningOutline:
+          'border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 shadow-xs',
+        destructiveOutline:
+          'border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 shadow-xs',
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-xs',
         outline:

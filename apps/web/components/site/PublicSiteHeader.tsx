@@ -23,6 +23,7 @@ type PublicSiteHeaderProps = {
   pageKeys: string[];
   currentPageId: string;
   user: User | null;
+  tasksPresent?: boolean;
   account?: {
     id: string | null;
     name: string | null;
@@ -46,11 +47,17 @@ const HIDDEN_PAGE_IDS = new Set(['home', 'contact']);
 export function PublicSiteHeader(props: PublicSiteHeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const navigablePages = props.pageKeys.filter(
+  const basePages = props.pageKeys.filter(
     (pageId) => !HIDDEN_PAGE_IDS.has(pageId),
   );
-  const visiblePages = navigablePages.slice(0, VISIBLE_NAV_ITEMS);
-  const overflowPages = navigablePages.slice(VISIBLE_NAV_ITEMS);
+  // Ensure 'tasks' appears as a primary tab (inserted near the end of visible items)
+  const allNavPages = basePages.slice();
+  if (!allNavPages.includes('tasks')) {
+    const insertAt = Math.min(VISIBLE_NAV_ITEMS - 1, allNavPages.length);
+    allNavPages.splice(insertAt, 0, 'tasks');
+  }
+  const visiblePages = allNavPages.slice(0, VISIBLE_NAV_ITEMS);
+  const overflowPages = allNavPages.slice(VISIBLE_NAV_ITEMS);
   const currentSiteUrl = buildCurrentSiteUrl(
     props.siteOrigin,
     pathname,
@@ -76,7 +83,7 @@ export function PublicSiteHeader(props: PublicSiteHeaderProps) {
 
         <div className="hidden min-w-0 flex-1 items-center justify-end lg:flex">
           <nav
-            className="mr-4 flex items-center gap-1 rounded-xl  px-2 py-1"
+            className="mr-4 flex items-center gap-1 rounded-xl px-2 py-1"
             style={{
               borderColor: props.theme.border,
               background: props.theme.navSurface,
@@ -180,7 +187,7 @@ export function PublicSiteHeader(props: PublicSiteHeaderProps) {
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="end" className="min-w-56">
-              {navigablePages.map((pageId) => (
+              {allNavPages.map((pageId) => (
                 <DropdownMenuItem asChild key={pageId}>
                   <Link href={getPageHref(props.projectId, pageId)}>
                     {formatPageLabel(pageId)}
@@ -234,9 +241,13 @@ function HeaderLink(props: {
 }
 
 function getPageHref(projectId: string, pageId: string) {
-  return pageId === 'home'
-    ? `/site/${projectId}`
-    : `/site/${projectId}?page=${encodeURIComponent(pageId)}`;
+  if (pageId === 'home') return `/site/${projectId}`;
+  if (pageId === 'tasks') return getTasksHref(projectId);
+  return `/site/${projectId}?page=${encodeURIComponent(pageId)}`;
+}
+
+function getTasksHref(projectId: string) {
+  return `/site/${projectId}/tasks`;
 }
 
 function formatPageLabel(pageId: string) {

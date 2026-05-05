@@ -1,3 +1,3 @@
-import { GlobalLoader } from '@kit/ui/global-loader';
+import { GoClubRouteLoader } from '~/components/goclub-route-loader';
 
-export default GlobalLoader;
+export default GoClubRouteLoader;

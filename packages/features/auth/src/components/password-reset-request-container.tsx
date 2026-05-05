@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
+import { getRedirectURL } from '@kit/supabase/get-redirect-url';
 import { useRequestResetPassword } from '@kit/supabase/hooks/use-request-reset-password';
 import { Alert, AlertDescription } from '@kit/ui/alert';
 import { Button } from '@kit/ui/button';
@@ -58,10 +59,7 @@ export function PasswordResetRequestContainer(params: {
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(({ email }) => {
-              const redirectTo = new URL(
-                params.redirectPath,
-                window.location.origin,
-              ).href;
+              const redirectTo = getRedirectURL(params.redirectPath);
 
               return resetPasswordMutation
                 .mutateAsync({
