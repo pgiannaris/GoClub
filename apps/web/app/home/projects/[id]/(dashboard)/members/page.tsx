@@ -539,7 +539,7 @@ export default function MembersPage() {
       if (removedStudent.account_id) {
         setWebsiteAccounts((prev) =>
           upsertWebsiteAccount(prev, {
-            id: removedStudent.account_id,
+            id: removedStudent.account_id!,
             name: removedStudent.full_name,
             email: removedStudent.email,
           }),

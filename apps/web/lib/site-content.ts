@@ -1,6 +1,7 @@
 export type BlockType =
   | 'hero'
   | 'text'
+  | 'image'
   | 'features'
   | 'announcements'
   | 'events'

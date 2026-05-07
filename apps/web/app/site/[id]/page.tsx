@@ -423,6 +423,49 @@ function PublicBlockRenderer({
         </section>
       );
 
+    case 'image': {
+      const imageUrl =
+        typeof block.content?.imageUrl === 'string' ? block.content.imageUrl : null;
+      const altText =
+        typeof block.content?.altText === 'string' ? block.content.altText : '';
+      const caption =
+        typeof block.content?.caption === 'string' ? block.content.caption : '';
+
+      return (
+        <section className="px-4" style={sectionStyle}>
+          <div className="container mx-auto max-w-5xl">
+            {imageUrl ? (
+              <figure
+                className={`overflow-hidden border ${hoverCardClassName}`}
+                style={elevatedCardStyle}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt={altText || caption || 'Site image'}
+                  className="h-auto w-full object-cover"
+                />
+                {caption || altText ? (
+                  <figcaption
+                    className="border-t px-5 py-4 text-sm"
+                    style={{
+                      borderColor: theme.border,
+                      color: theme.mutedText,
+                      background: theme.surface,
+                    }}
+                  >
+                    {caption || altText}
+                  </figcaption>
+                ) : null}
+              </figure>
+            ) : (
+              <EmptyState message="No image uploaded yet" theme={theme} />
+            )}
+          </div>
+        </section>
+      );
+    }
+
     case 'features':
       return (
         <section className="px-4" id="about" style={tintedSectionStyle}>

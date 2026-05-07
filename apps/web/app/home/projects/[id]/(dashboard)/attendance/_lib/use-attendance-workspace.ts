@@ -7,6 +7,12 @@ import { toast } from 'sonner';
 import { useSupabase } from '@kit/supabase/hooks/use-supabase';
 
 import {
+  type AttendanceEntry,
+  type AttendanceRow,
+  type AttendanceSession,
+  type AttendanceStatus,
+  type CustomAttendee,
+  type MemberProfile,
   attendanceEntryKey,
   coerceAttendanceStatus,
   defaultSessionTitle,
@@ -15,13 +21,8 @@ import {
   normalizeName,
   sortSessionsByDateDesc,
   todayIso,
-  type AttendanceEntry,
-  type AttendanceRow,
-  type AttendanceSession,
-  type AttendanceStatus,
-  type CustomAttendee,
-  type MemberProfile,
 } from './attendance-utils';
+
 export type DraftAttendanceStatus = AttendanceStatus | 'unmarked';
 
 type CreateSessionInput = {
@@ -29,6 +30,7 @@ type CreateSessionInput = {
   meeting_date: string;
   notes: string;
   is_public: boolean;
+  event_id?: string | null;
 };
 
 type UseAttendanceWorkspaceOptions = {
@@ -44,20 +46,28 @@ export function useAttendanceWorkspace(
 
   const [members, setMembers] = useState<MemberProfile[]>([]);
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
-  const [entriesBySession, setEntriesBySession] = useState<Record<string, AttendanceEntry[]>>({});
+  const [entriesBySession, setEntriesBySession] = useState<
+    Record<string, AttendanceEntry[]>
+  >({});
 
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null,
+  );
   const [selectedDate, setSelectedDate] = useState<string>(todayIso());
   const [customAttendees, setCustomAttendees] = useState<CustomAttendee[]>([]);
-  const [statusByAttendeeKey, setStatusByAttendeeKey] = useState<Record<string, DraftAttendanceStatus>>(
-    {},
-  );
+  const [statusByAttendeeKey, setStatusByAttendeeKey] = useState<
+    Record<string, DraftAttendanceStatus>
+  >({});
 
   const [loading, setLoading] = useState(true);
   const [creatingSession, setCreatingSession] = useState(false);
   const [savingAttendance, setSavingAttendance] = useState(false);
-  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
+    null,
+  );
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null,
+  );
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) ?? null,
@@ -66,7 +76,8 @@ export function useAttendanceWorkspace(
   const isDraftSession = !selectedSession;
 
   const selectedEntries = useMemo(
-    () => (selectedSessionId ? entriesBySession[selectedSessionId] ?? [] : []),
+    () =>
+      selectedSessionId ? (entriesBySession[selectedSessionId] ?? []) : [],
     [entriesBySession, selectedSessionId],
   );
 
@@ -77,7 +88,8 @@ export function useAttendanceWorkspace(
       member_name: member.full_name,
       role: member.role,
       is_roster: true,
-      status: (statusByAttendeeKey[memberKey(member.id)] ?? 'unmarked') as AttendanceStatus,
+      status: (statusByAttendeeKey[memberKey(member.id)] ??
+        'unmarked') as AttendanceStatus,
     }));
 
     const customRows = customAttendees.map((attendee) => ({
@@ -86,7 +98,8 @@ export function useAttendanceWorkspace(
       member_name: attendee.member_name,
       role: null,
       is_roster: false,
-      status: (statusByAttendeeKey[attendee.key] ?? 'unmarked') as AttendanceStatus,
+      status: (statusByAttendeeKey[attendee.key] ??
+        'unmarked') as AttendanceStatus,
     }));
 
     return [...rosterRows, ...customRows].sort((a, b) =>
@@ -109,7 +122,9 @@ export function useAttendanceWorkspace(
 
   const changedRowKeys = useMemo(() => {
     const changed = new Set<string>();
-    const rowByKey = new Map(attendanceRows.map((row) => [row.key, row] as const));
+    const rowByKey = new Map(
+      attendanceRows.map((row) => [row.key, row] as const),
+    );
 
     attendanceRows.forEach((row) => {
       const existingEntries = selectedEntriesByKey.get(row.key) ?? [];
@@ -125,7 +140,8 @@ export function useAttendanceWorkspace(
 
       if (
         currentStatus !== 'unmarked' &&
-        (existingEntries.length > 1 || existingEntries[0]?.status !== currentStatus)
+        (existingEntries.length > 1 ||
+          existingEntries[0]?.status !== currentStatus)
       ) {
         changed.add(row.key);
       }
@@ -174,15 +190,17 @@ export function useAttendanceWorkspace(
 
       const { data: sessionData, error: sessionError } = await (supabase as any)
         .from('attendance_sessions')
-        .select('id, project_id, title, meeting_date, notes, is_public, created_at')
+        .select(
+          'id, project_id, title, meeting_date, event_id, notes, is_public, created_at',
+        )
         .eq('project_id', projectId)
         .order('meeting_date', { ascending: false });
 
       if (sessionError) throw sessionError;
 
-      const normalizedSessions = ((sessionData ?? []) as AttendanceSession[]).sort(
-        sortSessionsByDateDesc,
-      );
+      const normalizedSessions = (
+        (sessionData ?? []) as AttendanceSession[]
+      ).sort(sortSessionsByDateDesc);
 
       let nextSessions = normalizedSessions;
       let nextEntriesBySession: Record<string, AttendanceEntry[]> = {};
@@ -197,18 +215,20 @@ export function useAttendanceWorkspace(
 
         if (entryError) throw entryError;
 
-        ((entryData ?? []) as Array<Omit<AttendanceEntry, 'status'> & { status: unknown }>).forEach(
-          (entry) => {
-            const normalizedEntry: AttendanceEntry = {
-              ...entry,
-              status: coerceAttendanceStatus(entry.status),
-            };
+        (
+          (entryData ?? []) as Array<
+            Omit<AttendanceEntry, 'status'> & { status: unknown }
+          >
+        ).forEach((entry) => {
+          const normalizedEntry: AttendanceEntry = {
+            ...entry,
+            status: coerceAttendanceStatus(entry.status),
+          };
 
-            const bucket = nextEntriesBySession[normalizedEntry.session_id] ?? [];
-            bucket.push(normalizedEntry);
-            nextEntriesBySession[normalizedEntry.session_id] = bucket;
-          },
-        );
+          const bucket = nextEntriesBySession[normalizedEntry.session_id] ?? [];
+          bucket.push(normalizedEntry);
+          nextEntriesBySession[normalizedEntry.session_id] = bucket;
+        });
       }
 
       if (autoCreateToday) {
@@ -222,22 +242,32 @@ export function useAttendanceWorkspace(
             project_id: projectId,
             title: defaultSessionTitle(todayDate),
             meeting_date: todayDate,
+            event_id: null,
             notes: null,
             is_public: false,
           };
 
-          const { data: autoSessionData, error: autoSessionError } = await (supabase as any)
+          const { data: autoSessionData, error: autoSessionError } = await (
+            supabase as any
+          )
             .from('attendance_sessions')
             .insert(autoSessionPayload)
-            .select('id, project_id, title, meeting_date, notes, is_public, created_at')
+            .select(
+              'id, project_id, title, meeting_date, event_id, notes, is_public, created_at',
+            )
             .single();
 
           if (autoSessionError) {
-            console.error('Failed to auto-create today meeting', autoSessionError);
+            console.error(
+              'Failed to auto-create today meeting',
+              autoSessionError,
+            );
             toast.error('Could not auto-create today meeting');
           } else if (autoSessionData) {
             const autoSession = autoSessionData as AttendanceSession;
-            nextSessions = [...normalizedSessions, autoSession].sort(sortSessionsByDateDesc);
+            nextSessions = [...normalizedSessions, autoSession].sort(
+              sortSessionsByDateDesc,
+            );
             nextEntriesBySession = {
               ...nextEntriesBySession,
               [autoSession.id]: [],
@@ -256,7 +286,9 @@ export function useAttendanceWorkspace(
         if (current && nextSessionIds.includes(current)) return current;
         return preferredSessionId;
       });
-      setSelectedDate((current) => current || nextSessions[0]?.meeting_date || todayIso());
+      setSelectedDate(
+        (current) => current || nextSessions[0]?.meeting_date || todayIso(),
+      );
     } catch (error) {
       console.error('Failed to load attendance data', error);
       toast.error('Failed to load attendance data');
@@ -270,7 +302,9 @@ export function useAttendanceWorkspace(
   }, [loadAttendance]);
 
   useEffect(() => {
-    const match = sessions.find((session) => session.meeting_date === selectedDate);
+    const match = sessions.find(
+      (session) => session.meeting_date === selectedDate,
+    );
     setSelectedSessionId(match?.id ?? null);
   }, [selectedDate, sessions]);
 
@@ -278,11 +312,15 @@ export function useAttendanceWorkspace(
     const nextStatuses: Record<string, DraftAttendanceStatus> = {};
     const nextCustom = new Map<string, CustomAttendee>();
     const memberIdByName = new Map(
-      members.map((member) => [normalizeName(member.full_name), member.id] as const),
+      members.map(
+        (member) => [normalizeName(member.full_name), member.id] as const,
+      ),
     );
 
     members.forEach((member) => {
-      nextStatuses[memberKey(member.id)] = selectedSession ? 'absent' : 'unmarked';
+      nextStatuses[memberKey(member.id)] = selectedSession
+        ? 'absent'
+        : 'unmarked';
     });
 
     selectedEntries.forEach((entry) => {
@@ -300,7 +338,9 @@ export function useAttendanceWorkspace(
     });
 
     setCustomAttendees(
-      Array.from(nextCustom.values()).sort((a, b) => a.member_name.localeCompare(b.member_name)),
+      Array.from(nextCustom.values()).sort((a, b) =>
+        a.member_name.localeCompare(b.member_name),
+      ),
     );
     setStatusByAttendeeKey(nextStatuses);
   }, [members, selectedEntries]);
@@ -309,9 +349,12 @@ export function useAttendanceWorkspace(
     resetDraftFromSelectedEntries();
   }, [resetDraftFromSelectedEntries]);
 
-  const setAttendanceStatus = useCallback((key: string, status: DraftAttendanceStatus) => {
-    setStatusByAttendeeKey((prev) => ({ ...prev, [key]: status }));
-  }, []);
+  const setAttendanceStatus = useCallback(
+    (key: string, status: DraftAttendanceStatus) => {
+      setStatusByAttendeeKey((prev) => ({ ...prev, [key]: status }));
+    },
+    [],
+  );
 
   const discardChanges = useCallback(() => {
     resetDraftFromSelectedEntries();
@@ -348,7 +391,9 @@ export function useAttendanceWorkspace(
   );
 
   const removeManualAttendee = useCallback((key: string) => {
-    setCustomAttendees((prev) => prev.filter((attendee) => attendee.key !== key));
+    setCustomAttendees((prev) =>
+      prev.filter((attendee) => attendee.key !== key),
+    );
     setStatusByAttendeeKey((prev) => {
       const next = { ...prev };
       delete next[key];
@@ -383,6 +428,7 @@ export function useAttendanceWorkspace(
           project_id: projectId,
           title,
           meeting_date: meetingDate,
+          event_id: input.event_id ?? null,
           notes: input.notes.trim() || null,
           is_public: input.is_public,
         };
@@ -390,14 +436,18 @@ export function useAttendanceWorkspace(
         const { data, error } = await (supabase as any)
           .from('attendance_sessions')
           .insert(payload)
-          .select('id, project_id, title, meeting_date, notes, is_public, created_at')
+          .select(
+            'id, project_id, title, meeting_date, event_id, notes, is_public, created_at',
+          )
           .single();
 
         if (error) throw error;
 
         const newSession = data as AttendanceSession;
 
-        setSessions((prev) => [...prev, newSession].sort(sortSessionsByDateDesc));
+        setSessions((prev) =>
+          [...prev, newSession].sort(sortSessionsByDateDesc),
+        );
         setEntriesBySession((prev) => ({ ...prev, [newSession.id]: [] }));
         setSelectedSessionId(newSession.id);
         toast.success('Meeting created');
@@ -484,7 +534,9 @@ export function useAttendanceWorkspace(
           .from('attendance_sessions')
           .update({ title: trimmedTitle })
           .eq('id', sessionId)
-          .select('id, project_id, title, meeting_date, notes, is_public, created_at')
+          .select(
+            'id, project_id, title, meeting_date, event_id, notes, is_public, created_at',
+          )
           .single();
 
         if (error) throw error;
@@ -510,164 +562,191 @@ export function useAttendanceWorkspace(
     [sessions, supabase],
   );
 
-  const saveAttendance = useCallback(
-    async (options?: { newSessionTitle?: string }) => {
+  const linkSessionToEvent = useCallback(
+    async (sessionId: string, eventId: string | null) => {
+      const session = sessions.find((candidate) => candidate.id === sessionId);
 
-    if (attendanceRows.length === 0) {
-      toast.error('No attendees to save');
-      return false;
-    }
-
-    if (!hasUnsavedChanges) {
-      toast.info('No unsaved changes');
-      return false;
-    }
-
-    setSavingAttendance(true);
-
-    try {
-      const rowByKey = new Map(attendanceRows.map((row) => [row.key, row] as const));
-      let workingSession = selectedSession;
-      if (!workingSession) {
-        const draftTitle = options?.newSessionTitle?.trim();
-        const titleForCreate = draftTitle || defaultSessionTitle(selectedDate);
-        const { data: created, error: createError } = await (supabase as any)
-          .from('attendance_sessions')
-          .insert({
-            project_id: projectId,
-            title: titleForCreate,
-            meeting_date: selectedDate,
-            notes: null,
-            is_public: false,
-          })
-          .select('id, project_id, title, meeting_date, notes, is_public, created_at')
-          .single();
-        if (createError) throw createError;
-        workingSession = created as AttendanceSession;
-        setSessions((prev) => [...prev, workingSession!].sort(sortSessionsByDateDesc));
-        setSelectedSessionId(workingSession.id);
+      if (!session) {
+        toast.error('Meeting not found');
+        return false;
       }
-      const entriesToDelete = new Set<string>();
-      const payload: Array<{
-        session_id: string;
-        member_id: string | null;
-        member_name: string;
-        status: AttendanceStatus;
-      }> = [];
 
-      attendanceRows.forEach((row) => {
-        const currentStatus = statusByAttendeeKey[row.key] ?? 'unmarked';
-        const existingEntries = selectedEntriesByKey.get(row.key) ?? [];
-        const primaryExisting = existingEntries[0] ?? null;
+      const { data, error } = await (supabase as any)
+        .from('attendance_sessions')
+        .update({ event_id: eventId })
+        .eq('id', sessionId)
+        .select(
+          'id, project_id, title, meeting_date, event_id, notes, is_public, created_at',
+        )
+        .single();
 
-        if (primaryExisting) {
-          if (
-            currentStatus !== 'unmarked' &&
-            (primaryExisting.status !== currentStatus || existingEntries.length > 1)
-          ) {
-            existingEntries.forEach((entry) => entriesToDelete.add(entry.id));
+      if (error || !data) {
+        console.error('Failed to link attendance session to event', error);
+        toast.error('Failed to link attendance to event');
+        return false;
+      }
+
+      const updatedSession = data as AttendanceSession;
+
+      setSessions((prev) =>
+        prev
+          .map((item) => (item.id === sessionId ? updatedSession : item))
+          .sort(sortSessionsByDateDesc),
+      );
+
+      toast.success(
+        eventId ? 'Attendance linked to event' : 'Event link removed',
+      );
+      return true;
+    },
+    [sessions, supabase],
+  );
+
+  const saveAttendance = useCallback(
+    async (options?: {
+      newSessionTitle?: string;
+      newSessionEventId?: string | null;
+    }) => {
+      if (attendanceRows.length === 0) {
+        toast.error('No attendees to save');
+        return false;
+      }
+
+      if (!hasUnsavedChanges) {
+        toast.info('No unsaved changes');
+        return false;
+      }
+
+      setSavingAttendance(true);
+
+      try {
+        const rowByKey = new Map(
+          attendanceRows.map((row) => [row.key, row] as const),
+        );
+        let workingSession = selectedSession;
+        if (!workingSession) {
+          const draftTitle = options?.newSessionTitle?.trim();
+          const titleForCreate =
+            draftTitle || defaultSessionTitle(selectedDate);
+          const { data: created, error: createError } = await (supabase as any)
+            .from('attendance_sessions')
+            .insert({
+              project_id: projectId,
+              title: titleForCreate,
+              meeting_date: selectedDate,
+              event_id: options?.newSessionEventId ?? null,
+              notes: null,
+              is_public: false,
+            })
+            .select(
+              'id, project_id, title, meeting_date, event_id, notes, is_public, created_at',
+            )
+            .single();
+          if (createError) throw createError;
+          workingSession = created as AttendanceSession;
+          setSessions((prev) =>
+            [...prev, workingSession!].sort(sortSessionsByDateDesc),
+          );
+          setSelectedSessionId(workingSession.id);
+        }
+        const entriesToDelete = new Set<string>();
+        const payload: Array<{
+          session_id: string;
+          member_id: string | null;
+          member_name: string;
+          status: AttendanceStatus;
+        }> = [];
+
+        attendanceRows.forEach((row) => {
+          const currentStatus = statusByAttendeeKey[row.key] ?? 'unmarked';
+          const existingEntries = selectedEntriesByKey.get(row.key) ?? [];
+          const primaryExisting = existingEntries[0] ?? null;
+
+          if (primaryExisting) {
+            if (
+              primaryExisting.status !== currentStatus ||
+              existingEntries.length > 1
+            ) {
+              existingEntries.forEach((entry) => entriesToDelete.add(entry.id));
+              payload.push({
+                session_id: workingSession.id,
+                member_id: row.member_id,
+                member_name: row.member_name,
+                status: currentStatus,
+              });
+            }
+
+            return;
+          }
+
+          const shouldInsert =
+            selectedEntries.length === 0 ||
+            !row.is_roster ||
+            currentStatus !== 'absent';
+
+          if (shouldInsert) {
             payload.push({
               session_id: workingSession.id,
               member_id: row.member_id,
               member_name: row.member_name,
-              status: currentStatus,
+              status: currentStatus as AttendanceStatus,
             });
           }
+        });
 
-          return;
+        selectedEntriesByKey.forEach((entries, key) => {
+          if (rowByKey.has(key)) return;
+          entries.forEach((entry) => entriesToDelete.add(entry.id));
+        });
+
+        const deleteIds = Array.from(entriesToDelete);
+        if (deleteIds.length > 0) {
+          const { error: deleteError } = await (supabase as any)
+            .from('attendance_entries')
+            .delete()
+            .eq('session_id', workingSession.id)
+            .in('id', deleteIds);
+
+          if (deleteError) throw deleteError;
         }
 
-        const shouldInsert =
-          currentStatus !== 'unmarked' &&
-          (selectedEntries.length === 0 || !row.is_roster || currentStatus !== 'absent');
+        if (payload.length > 0) {
+          const { error: insertError } = await (supabase as any)
+            .from('attendance_entries')
+            .insert(payload);
 
-        if (shouldInsert) {
-          payload.push({
-            session_id: workingSession.id,
-            member_id: row.member_id,
-            member_name: row.member_name,
-            status: currentStatus as AttendanceStatus,
-          });
+          if (insertError) throw insertError;
         }
-      });
 
-      selectedEntriesByKey.forEach((entries, key) => {
-        if (rowByKey.has(key)) return;
-        entries.forEach((entry) => entriesToDelete.add(entry.id));
-      });
-
-      const deleteIds = Array.from(entriesToDelete);
-      if (deleteIds.length > 0) {
-        const { error: deleteError } = await (supabase as any)
+        const { data, error: refreshError } = await (supabase as any)
           .from('attendance_entries')
-          .delete()
+          .select('id, session_id, member_id, member_name, status, created_at')
           .eq('session_id', workingSession.id)
-          .in('id', deleteIds);
+          .order('created_at', { ascending: false });
 
-        if (deleteError) throw deleteError;
+        if (refreshError) throw refreshError;
+
+        setEntriesBySession((prev) => ({
+          ...prev,
+          [workingSession.id]: (
+            (data ?? []) as Array<
+              Omit<AttendanceEntry, 'status'> & { status: unknown }
+            >
+          ).map((entry) => ({
+            ...entry,
+            status: coerceAttendanceStatus(entry.status),
+          })),
+        }));
+
+        toast.success('Attendance changes saved');
+        return true;
+      } catch (error) {
+        console.error('Failed to save attendance', error);
+        toast.error('Failed to save attendance');
+        return false;
+      } finally {
+        setSavingAttendance(false);
       }
-
-      if (payload.length > 0) {
-        const { error: insertError } = await (supabase as any)
-          .from('attendance_entries')
-          .insert(payload);
-
-        if (insertError) {
-          const isStatusConstraintError =
-            insertError?.code === '23514' &&
-            String(insertError?.message ?? '').includes(
-              'attendance_entries_status_check',
-            );
-          const hasLateStatus = payload.some((row) => row.status === 'late');
-
-          if (isStatusConstraintError && hasLateStatus) {
-            const normalizedPayload = payload.map((row) => ({
-              ...row,
-              status: row.status === 'late' ? 'present' : row.status,
-            }));
-
-            const { error: retryError } = await (supabase as any)
-              .from('attendance_entries')
-              .insert(normalizedPayload);
-
-            if (retryError) throw retryError;
-
-            toast.warning(
-              'Your database does not support "Late" yet. Late entries were saved as Present.',
-            );
-          } else {
-            throw insertError;
-          }
-        }
-      }
-
-      const { data, error: refreshError } = await (supabase as any)
-        .from('attendance_entries')
-        .select('id, session_id, member_id, member_name, status, created_at')
-        .eq('session_id', workingSession.id)
-        .order('created_at', { ascending: false });
-
-      if (refreshError) throw refreshError;
-
-      setEntriesBySession((prev) => ({
-        ...prev,
-        [workingSession.id]: ((data ?? []) as Array<
-          Omit<AttendanceEntry, 'status'> & { status: unknown }
-        >).map((entry) => ({
-          ...entry,
-          status: coerceAttendanceStatus(entry.status),
-        })),
-      }));
-
-      toast.success('Attendance changes saved');
-      return true;
-    } catch (error) {
-      console.error('Failed to save attendance', error);
-      toast.error('Failed to save attendance');
-      return false;
-    } finally {
-      setSavingAttendance(false);
-    }
     },
     [
       attendanceRows,
@@ -709,6 +788,7 @@ export function useAttendanceWorkspace(
     removeManualAttendee,
     createSession,
     renameSession,
+    linkSessionToEvent,
     deleteSession,
     saveAttendance,
   };

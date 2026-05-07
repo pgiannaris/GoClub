@@ -125,6 +125,11 @@ type AttendanceEntryRecord = {
   status: unknown;
 };
 
+type ProjectSiteUserRecord = {
+  id: string;
+  intent: string;
+};
+
 type DashboardData = {
   projectMembers: ProjectMember[];
   students: StudentProfile[];
@@ -134,6 +139,7 @@ type DashboardData = {
   attendanceSessions: AttendanceSessionRecord[];
   recentAttendanceSessions: AttendanceSessionRecord[];
   attendanceEntries: AttendanceEntryRecord[];
+  projectSiteUsers: ProjectSiteUserRecord[];
 };
 
 type AttendanceChartRow = {
@@ -202,6 +208,7 @@ const EMPTY_DASHBOARD_DATA: DashboardData = {
   attendanceSessions: [],
   recentAttendanceSessions: [],
   attendanceEntries: [],
+  projectSiteUsers: [],
 };
 
 const BLUE = {
@@ -256,6 +263,36 @@ const announcementBreakdownChartConfig = {
   count: { label: 'Count', color: BLUE[500] },
 } satisfies ChartConfig;
 
+const ATTENDANCE_PERIOD_STORAGE_KEY = 'goclub.home.project-attendance-period';
+
+const ATTENDANCE_PERIOD_OPTIONS = [
+  'session',
+  'daily',
+  'weekly',
+  'monthly',
+] as const;
+
+type AttendancePeriod = (typeof ATTENDANCE_PERIOD_OPTIONS)[number];
+
+function readAttendancePeriodFromStorage() {
+  if (typeof window === 'undefined') {
+    return 'session' as const;
+  }
+
+  const savedPeriod = window.localStorage.getItem(
+    ATTENDANCE_PERIOD_STORAGE_KEY,
+  );
+
+  if (
+    savedPeriod &&
+    ATTENDANCE_PERIOD_OPTIONS.includes(savedPeriod as AttendancePeriod)
+  ) {
+    return savedPeriod as AttendancePeriod;
+  }
+
+  return 'session' as const;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ProjectDetailContent({ projectId }: { projectId: string }) {
@@ -266,9 +303,9 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
     useState<DashboardData>(EMPTY_DASHBOARD_DATA);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [attendancePeriod, setAttendancePeriod] = useState<
-    'session' | 'daily' | 'weekly' | 'monthly'
-  >('session');
+  const [attendancePeriod, setAttendancePeriod] = useState<AttendancePeriod>(
+    readAttendancePeriodFromStorage,
+  );
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
@@ -283,6 +320,13 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
   useEffect(() => {
     void loadProjectOverview();
   }, [projectId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      ATTENDANCE_PERIOD_STORAGE_KEY,
+      attendancePeriod,
+    );
+  }, [attendancePeriod]);
 
   const loadProjectOverview = async () => {
     setLoading(true);
@@ -307,6 +351,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
         { data: invitationData, error: invitationError },
         { data: announcementData, error: announcementError },
         { data: sessionData, error: sessionError },
+        { data: siteUserData, error: siteUserError },
         events,
       ] = await Promise.all([
         (supabase as any)
@@ -336,6 +381,10 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
           .select('id, title, meeting_date, is_public, created_at')
           .eq('project_id', projectId)
           .order('meeting_date', { ascending: false }),
+        (supabase as any)
+          .from('project_site_users')
+          .select('id, intent')
+          .eq('project_id', projectId),
         eventsPromise,
       ]);
 
@@ -345,6 +394,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
       if (invitationError) throw invitationError;
       if (announcementError) throw announcementError;
       if (sessionError) throw sessionError;
+      if (siteUserError) throw siteUserError;
 
       const attendanceSessions = (sessionData ??
         []) as AttendanceSessionRecord[];
@@ -373,6 +423,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
         attendanceSessions,
         recentAttendanceSessions,
         attendanceEntries,
+        projectSiteUsers: (siteUserData ?? []) as ProjectSiteUserRecord[],
       });
     } catch (error) {
       console.error('Failed to load club overview', error);
@@ -897,12 +948,18 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
     );
   }).length;
 
+  const siteVisitors = dashboardData.projectSiteUsers.length;
+  const justVisitingCount = dashboardData.projectSiteUsers.filter(
+    (user) => user.intent === 'just-visiting',
+  ).length;
+  const authenticatedSiteUsers = siteVisitors - justVisitingCount;
+
   return (
     <div className="w-full space-y-8 pb-16">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-black sm:text-3xl dark:text-white">
             {project.name}
           </h1>
           <div className="flex items-start gap-1.5">
@@ -984,6 +1041,23 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
           down={attendanceMomentum != null ? attendanceMomentum < 0 : undefined}
         />
       </div>
+
+      {/*
+      <SectionHeading>Traffic</SectionHeading>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <KpiCard
+          label="Tracked site users"
+          value={siteVisitors.toLocaleString()}
+          detail="Unique people recorded on the public subdomain."
+        />
+        <KpiCard
+          label="Just visiting"
+          value={justVisitingCount.toLocaleString()}
+          detail={`${authenticatedSiteUsers.toLocaleString()} logged in as members or admins.`}
+        />
+      </div>
+      */}
 
       {/* ── Action queue ───────────────────────────────────────────────────── */}
       <ActionCenter
@@ -1177,7 +1251,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
       </div>
 
       {/* Session composition stacked bar */}
-      <Card>
+      {/* <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold">
             Session composition
@@ -1265,7 +1339,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* ── Roster & Growth ────────────────────────────────────────────────── */}
       <SectionHeading>Roster &amp; Growth</SectionHeading>
@@ -2015,37 +2089,38 @@ function ActionCenter({
             </button>
           </div>
         ))}
-        {showDismissed && dismissed.map((item) => (
-          <div
-            key={item.id}
-            className="bg-muted/20 flex items-center gap-4 px-5 py-3.5 opacity-80"
-          >
-            <div className="bg-muted-foreground/50 h-2 w-2 shrink-0 rounded-full" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{item.title}</p>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                {item.description}
-              </p>
+        {showDismissed &&
+          dismissed.map((item) => (
+            <div
+              key={item.id}
+              className="bg-muted/20 flex items-center gap-4 px-5 py-3.5 opacity-80"
+            >
+              <div className="bg-muted-foreground/50 h-2 w-2 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{item.title}</p>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  {item.description}
+                </p>
+              </div>
+              <span className="bg-muted text-muted-foreground flex h-6 shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums">
+                {item.count}
+              </span>
+              <Link
+                href={item.href}
+                className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-0.5 text-xs font-medium transition-colors"
+              >
+                View <ArrowUpRight className="h-3 w-3" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => onUndismiss(item.id)}
+                className="text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-medium transition-colors"
+                aria-label={`Undismiss ${item.title}`}
+              >
+                Undismiss
+              </button>
             </div>
-            <span className="bg-muted text-muted-foreground flex h-6 shrink-0 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums">
-              {item.count}
-            </span>
-            <Link
-              href={item.href}
-              className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-0.5 text-xs font-medium transition-colors"
-            >
-              View <ArrowUpRight className="h-3 w-3" />
-            </Link>
-            <button
-              type="button"
-              onClick={() => onUndismiss(item.id)}
-              className="text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 rounded px-1.5 py-0.5 text-xs font-medium transition-colors"
-              aria-label={`Undismiss ${item.title}`}
-            >
-              Undismiss
-            </button>
-          </div>
-        ))}
+          ))}
       </div>
       {dismissed.length > 0 ? (
         <div className="border-t px-5 py-2.5">
@@ -2176,7 +2251,7 @@ function PeriodSelect({
       onChange={(e) =>
         onChange(e.target.value as 'session' | 'daily' | 'weekly' | 'monthly')
       }
-      className="text-muted-foreground rounded-md border bg-transparent px-2 py-1 text-xs focus:outline-none"
+      className="text-muted-foreground dark:text-foreground dark:bg-background rounded-md border bg-transparent px-2 py-1 text-xs focus:outline-none dark:[color-scheme:dark]"
     >
       {!excludeSession && <option value="session">By session</option>}
       <option value="daily">Daily</option>

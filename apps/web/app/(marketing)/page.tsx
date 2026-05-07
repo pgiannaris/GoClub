@@ -18,14 +18,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@kit/ui/button';
-import {
-  CtaButton,
-  FeatureCard,
-  FeatureGrid,
-  FeatureShowcase,
-  FeatureShowcaseIconContainer,
-  Hero,
-} from '@kit/ui/marketing';
+import { CtaButton, Hero } from '@kit/ui/marketing';
 
 import { AppLogo } from '~/components/app-logo';
 import landingPageImage from '~/components/landingpage.png';
@@ -149,6 +142,37 @@ const systemBenefits = [
   },
 ];
 
+const featureCards = [
+  {
+    label: 'Custom Club Dashboard',
+    description:
+      "Manage your club's announcements, events, and content with a clean and intuitive dashboard.",
+  },
+  {
+    label: 'Secure Authentication',
+    description:
+      'Allow members to sign in safely using email, Google, or other authentication providers.',
+  },
+  {
+    label: 'Member Management',
+    description: 'Easily manage club members, roles, and attendance features.',
+  },
+  {
+    label: 'Polls System',
+    description:
+      'Create and manage polls to gather feedback and group decisions quickly.',
+  },
+  {
+    label: 'Event & Project Management',
+    description: 'Plan, schedule, and announce club events in one place.',
+  },
+  {
+    label: 'Role-Based Permissions',
+    description:
+      'Assign roles and permissions so members only access what they need.',
+  },
+];
+
 function SectionEyebrow({
   children,
   className = '',
@@ -173,60 +197,33 @@ function Home() {
           <PersonalHeroSection />
         </section>
 
-        <section className="container mx-auto">
-          <FeatureShowcase
-            heading={
-              <>
-                <b className="font-semibold text-slate-950 dark:text-white">
-                  Everything your club needs
-                </b>
-                .{' '}
-                <span className="dark:text-muted-foreground font-normal text-slate-600">
-                  Keep your website, memberships, communication, events, and
-                  projects organized in one place.
+        <section className="mx-auto w-full max-w-7xl px-6 lg:px-8">
+          <div className="space-y-10">
+            <div className="max-w-6xl">
+              <h2 className="text-primary/90 text-5xl font-normal tracking-[-0.05em] text-balance sm:text-6xl lg:text-7xl">
+                Made by Students,{' '}
+                <span className="font-semibold text-slate-950 dark:text-white">
+                  For Students.
                 </span>
-              </>
-            }
-            icon={
-              <FeatureShowcaseIconContainer className="dark:border-border dark:bg-background rounded-xl border border-slate-200 bg-slate-50 text-slate-700">
-                <LayoutDashboard className="h-5" />
-                <span>Built for club operations</span>
-              </FeatureShowcaseIconContainer>
-            }
-          >
-            <FeatureGrid>
-              <FeatureCard
-                className="dark:border-border/60 dark:bg-card dark:text-card-foreground relative col-span-1 overflow-hidden border-slate-200 bg-white text-center shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-                label="Beautiful Club Dashboard"
-                description="Manage your club's website, events, and content with a clean and intuitive dashboard."
-              />
-              <FeatureCard
-                className="dark:border-border/60 dark:bg-card dark:text-card-foreground relative col-span-1 overflow-hidden border-slate-200 bg-white text-center shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-                label="Secure Authentication"
-                description="Allow members to sign in safely using email, Google, or other authentication providers."
-              />
-              <FeatureCard
-                className="dark:border-border/60 dark:bg-card dark:text-card-foreground relative col-span-1 overflow-hidden border-slate-200 bg-white text-center shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-                label="Club Memberships"
-                description="Easily manage club members, roles, and access to features within your club."
-              />
-              <FeatureCard
-                className="dark:border-border/60 dark:bg-card dark:text-card-foreground relative col-span-1 overflow-hidden border-slate-200 bg-white text-center shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-                label="Payment Integration"
-                description="Accept membership fees and donations through multiple payment gateways."
-              />
-              <FeatureCard
-                className="dark:border-border/60 dark:bg-card dark:text-card-foreground relative col-span-1 overflow-hidden border-slate-200 bg-white text-center shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-                label="Event & Project Management"
-                description="Plan, schedule, and track club events or projects directly from your dashboard."
-              />
-              <FeatureCard
-                className="dark:border-border/60 dark:bg-card dark:text-card-foreground relative col-span-1 overflow-hidden border-slate-200 bg-white text-center shadow-sm transition-transform duration-300 hover:-translate-y-1 hover:shadow-lg"
-                label="Role-Based Permissions"
-                description="Assign roles and permissions so members only access what they need."
-              />
-            </FeatureGrid>
-          </FeatureShowcase>
+              </h2>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {featureCards.map((card) => (
+                <article
+                  key={card.label}
+                  className="dark:border-border/60 dark:bg-card dark:text-card-foreground rounded-[1.75rem] border border-slate-200 bg-white px-8 py-12 text-center shadow-[0_12px_30px_-24px_rgba(15,23,42,0.4)] transition-shadow duration-300 hover:shadow-[0_20px_40px_-24px_rgba(15,23,42,0.5)]"
+                >
+                  <h3 className="text-2xl font-medium tracking-tight text-slate-950 dark:text-white">
+                    {card.label}
+                  </h3>
+                  <p className="dark:text-muted-foreground mx-auto mt-4 max-w-md text-lg leading-8 text-balance text-slate-500">
+                    {card.description}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="dark:border-border dark:bg-muted/20 border-y border-slate-200 bg-slate-50/70 py-10">
@@ -666,13 +663,13 @@ function PersonalHeroSection() {
     <Hero
       title={
         <>
-          <span className="block text-slate-950 dark:text-white">
+          <span className="block font-normal text-slate-950 dark:text-white">
             The{' '}
             <span className="font-semibold text-[#4189e2]">
               all-in-one platform
             </span>
           </span>
-          <span className="block text-slate-950 dark:text-white">
+          <span className="block font-normal text-slate-950 dark:text-white">
             for your club&apos;s management
           </span>
         </>

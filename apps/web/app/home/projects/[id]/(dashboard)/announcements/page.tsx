@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useSupabase } from '@kit/supabase/hooks/use-supabase';
 import { Badge } from '@kit/ui/badge';
 import { Button } from '@kit/ui/button';
+import { Card, CardContent } from '@kit/ui/card';
 import { Checkbox } from '@kit/ui/checkbox';
 import {
   Dialog,
@@ -402,8 +403,19 @@ export default function AnnouncementsPage() {
 
         {!loading &&
           filteredAnnouncements.map((announcement) => (
-            <div key={announcement.id} className="w-full rounded-md border p-4">
-              <div className="flex items-start justify-between gap-3">
+            <Card key={announcement.id}>
+              <CardContent
+                className="hover:bg-muted/40 relative flex cursor-pointer items-start justify-between gap-4 p-6 transition-colors"
+                role="button"
+                tabIndex={0}
+                onClick={() => openEditModal(announcement)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openEditModal(announcement);
+                  }
+                }}
+              >
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{announcement.title}</p>
@@ -422,18 +434,22 @@ export default function AnnouncementsPage() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="absolute top-4 right-4 flex items-center gap-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => openEditModal(announcement)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(announcement);
+                    }}
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedAnnouncement(announcement);
                       setDeleteModalOpen(true);
                     }}
@@ -441,8 +457,8 @@ export default function AnnouncementsPage() {
                     <Trash className="h-4 w-4" />
                   </Button>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
       </div>
 

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import { toast } from 'sonner';
+
 import { Button } from '@kit/ui/button';
 import {
   Dialog,
@@ -11,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@kit/ui/dialog';
-import { toast } from 'sonner';
 
 const STORAGE_PREFIX = 'public-site-role-prompt';
 type SiteRoleChoice =
@@ -78,15 +79,21 @@ export function PublicSiteRolePrompt(props: {
       setOpen(false);
 
       if (intent === 'student-member-requested') {
-        toast.success('Access request sent. Admins can now review you on the members page.');
+        toast.success(
+          'Access request sent. Admins can now review you on the members page.',
+        );
       }
 
       if (intent === 'just-visiting') {
-        toast.success('Saved. You will appear as a visitor for admins reviewing website users.');
+        toast.success(
+          'Saved. You will appear as a visitor for admins reviewing website users.',
+        );
       }
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to save your site role';
+        error instanceof Error
+          ? error.message
+          : 'Failed to save your site role';
       toast.error(message);
     } finally {
       setSavingChoice(null);
@@ -115,27 +122,24 @@ export function PublicSiteRolePrompt(props: {
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => nextOpen && setOpen(true)}>
-      <DialogContent className="sm:max-w-md [&>button]:hidden">
+      <DialogContent className="max-h-[70vh] w-full max-w-md overflow-auto sm:max-w-lg">
         {step === 'role' ? (
           <>
             <DialogHeader>
               <DialogTitle>What brings you here?</DialogTitle>
-              <DialogDescription>
-                Choose the option that fits you best. Students and members can
-                ask to join the class roster. Administrators stay here too, and
-                can review website users and approve who gets added.
+              <DialogDescription className="text-sm">
+                Pick the option that fits you. Students can request roster
+                access; admins can review site users.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3 text-sm text-muted-foreground">
-              <p>
-                If you are a student or member, you can request to join the
-                class. Once you are on the roster, you will get more access to
-                this website.
+            <div className="text-muted-foreground space-y-3 text-sm">
+              <p className="break-words whitespace-normal">
+                Students and members can request to join the class roster to
+                gain additional access.
               </p>
-              <p>
-                If you are just visiting, you can keep browsing without being
-                placed on the roster.
+              <p className="break-words whitespace-normal">
+                If you&apos;re just visiting, continue browsing as a visitor.
               </p>
             </div>
 
@@ -163,7 +167,9 @@ export function PublicSiteRolePrompt(props: {
                 variant="ghost"
                 disabled={Boolean(savingChoice)}
               >
-                {savingChoice === 'just-visiting' ? 'Saving...' : 'Just Visiting'}
+                {savingChoice === 'just-visiting'
+                  ? 'Saving...'
+                  : 'Just Visiting'}
               </Button>
             </DialogFooter>
           </>
@@ -171,16 +177,21 @@ export function PublicSiteRolePrompt(props: {
           <>
             <DialogHeader>
               <DialogTitle>Request to join the class?</DialogTitle>
-              <DialogDescription>
-                If you request to join, you will be added to the website user
-                list so an administrator can review and approve you for the
-                roster. Students on the roster get more access to the website.
+              <DialogDescription className="text-sm">
+                Requesting adds you to the site user list for admin review.
+                Approved students receive additional access.
               </DialogDescription>
             </DialogHeader>
 
             <DialogFooter className="gap-2 sm:justify-start">
-              <Button onClick={handleStudentRequest} type="button" disabled={Boolean(savingChoice)}>
-                {savingChoice === 'student-member-requested' ? 'Saving...' : 'Yes, request access'}
+              <Button
+                onClick={handleStudentRequest}
+                type="button"
+                disabled={Boolean(savingChoice)}
+              >
+                {savingChoice === 'student-member-requested'
+                  ? 'Saving...'
+                  : 'Yes, request access'}
               </Button>
 
               <Button

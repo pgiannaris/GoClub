@@ -55,6 +55,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@kit/ui/dialog';
+import { ImageUploader } from '@kit/ui/image-uploader';
 import { Input } from '@kit/ui/input';
 
 import {
@@ -94,6 +95,12 @@ const BLOCK_LIBRARY = [
         label: 'Hero',
         icon: Image,
         description: 'Big headline banner',
+      },
+      {
+        type: 'image',
+        label: 'Image',
+        icon: Image,
+        description: 'Upload a photo',
       },
       {
         type: 'text',
@@ -162,6 +169,70 @@ const BLOCK_LIBRARY = [
     ],
   },
 ];
+
+const SITE_IMAGES_BUCKET = 'site_images';
+
+type DatabaseClient = ReturnType<typeof useSupabase>;
+
+async function deleteSiteImage(
+  client: DatabaseClient,
+  imagePathOrUrl: string | null | undefined,
+) {
+  const imagePath = normalizeSiteImagePath(imagePathOrUrl);
+  if (!imagePath) {
+    return;
+  }
+
+  await client.storage.from(SITE_IMAGES_BUCKET).remove([imagePath]);
+}
+
+async function uploadSiteImage(
+  client: DatabaseClient,
+  file: File,
+  projectId: string,
+  blockId: string,
+) {
+  const bytes = await file.arrayBuffer();
+  const extension = file.name.split('.').pop() || 'png';
+  const imagePath = `projects/${projectId}/blocks/${blockId}/${crypto.randomUUID()}.${extension}`;
+
+  const result = await client.storage.from(SITE_IMAGES_BUCKET).upload(imagePath, bytes, {
+    cacheControl: '3600',
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  const { data } = client.storage.from(SITE_IMAGES_BUCKET).getPublicUrl(imagePath);
+
+  return {
+    imagePath,
+    imageUrl: data.publicUrl,
+  };
+}
+
+function normalizeSiteImagePath(imagePathOrUrl: string | null | undefined) {
+  if (!imagePathOrUrl) {
+    return null;
+  }
+
+  if (!imagePathOrUrl.includes('/storage/v1/object/public/')) {
+    return imagePathOrUrl;
+  }
+
+  const url = new URL(imagePathOrUrl);
+  const prefix = `/storage/v1/object/public/${SITE_IMAGES_BUCKET}/`;
+  const index = url.pathname.indexOf(prefix);
+
+  if (index === -1) {
+    return null;
+  }
+
+  return decodeURIComponent(url.pathname.slice(index + prefix.length));
+}
 
 // ─── Default Pages ────────────────────────────────────────────────────────────
 
@@ -577,6 +648,13 @@ export function EditorShell({ projectId }: { projectId: string }) {
           ? { title: 'Section Title', subtitle: 'Add a subtitle here.' }
           : type === 'text'
             ? { text: 'Add your content here...' }
+            : type === 'image'
+              ? {
+                  imageUrl: null,
+                  imagePath: null,
+                  altText: 'Uploaded image',
+                  caption: '',
+                }
             : type === 'features'
               ? { items: ['Feature 1', 'Feature 2', 'Feature 3'] }
               : undefined,
@@ -804,7 +882,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="text-foreground flex h-[calc(100vh-64px)] flex-col bg-[#F5F5F5]">
+    <div className="bg-background text-foreground flex h-[calc(100vh-64px)] flex-col">
       {/* ── Wizard ── */}
       <Dialog open={showWizard} onOpenChange={setShowWizard}>
         <DialogContent className="border-border bg-background sm:max-w-lg">
@@ -984,7 +1062,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
           onClick={() => setSelectedBlockId(null)}
         >
           {/* Canvas toolbar */}
-          <div className="flex items-center justify-between border-b border-[#E0E0E0] bg-white px-5 py-2.5">
+          <div className="bg-card border-border flex items-center justify-between border-b px-5 py-2.5">
             <div className="text-muted-foreground flex items-center gap-2 text-sm">
               <span className="text-foreground font-medium">
                 {activePageLabel}
@@ -1003,25 +1081,17 @@ export function EditorShell({ projectId }: { projectId: string }) {
           {/* Scrollable canvas */}
           <div
             className="flex-1 overflow-y-auto p-6"
-            style={{ background: '#DCDCDC' }}
+            style={{ background: previewTheme.pageBackground }}
           >
             <div
               className="mx-auto transition-all duration-300"
               style={{ width: deviceWidth, maxWidth: '100%' }}
             >
-              {/* Device chrome */}
-              {deviceMode !== 'desktop' && (
-                <div className="mb-2 flex items-center justify-center gap-2">
-                  <div className="h-1 w-10 rounded-full bg-[#B0B0B0]" />
-                </div>
-              )}
               <div
-                className="overflow-hidden bg-white"
+                className="overflow-hidden"
                 style={{
-                  boxShadow: '0 4px 32px rgba(0,0,0,0.10)',
                   minHeight: 520,
-                  background: previewTheme.surface,
-                  borderRadius: deviceMode !== 'desktop' ? 16 : 4,
+                  background: previewTheme.pageBackground,
                 }}
               >
                 {activePageSettings.showPageHeader && (
@@ -1038,6 +1108,8 @@ export function EditorShell({ projectId }: { projectId: string }) {
                   activeBlocks.map((block, index) => (
                     <BlockRenderer
                       key={block.id}
+                      client={supabase}
+                      projectId={projectId}
                       block={block}
                       selected={block.id === selectedBlockId}
                       canMoveUp={canMoveBlock(activeBlocks, index, 'up')}
@@ -1134,7 +1206,7 @@ function TopBar({
   onToggleLeftSidebar: () => void;
 }) {
   return (
-    <header className="z-20 flex h-14 items-center border-b border-[#E0E0E0] bg-white px-4">
+    <header className="bg-card border-border z-20 flex h-14 items-center border-b px-4">
       {/* Left */}
       <div className="flex items-center gap-3">
         <button
@@ -1161,7 +1233,7 @@ function TopBar({
             onClick={() => onPageClick(pageId)}
             className={`rounded-lg px-3 py-1.5 text-sm whitespace-nowrap transition-colors ${
               activePage === pageId
-                ? 'text-foreground bg-[#F0F0F0] font-medium'
+                ? 'bg-muted text-foreground font-medium'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -1193,7 +1265,7 @@ function TopBar({
               onClick={() => onDeviceChange(mode)}
               className={`flex h-7 w-8 items-center justify-center rounded-md transition ${
                 deviceMode === mode
-                  ? 'text-foreground bg-white shadow-sm'
+                  ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -1240,9 +1312,9 @@ function LeftSidebar({
   onAddBlock: (type: string) => void;
 }) {
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-[#E0E0E0] bg-white">
+    <aside className="bg-card border-border flex w-64 shrink-0 flex-col border-r">
       {/* Tab bar */}
-      <div className="flex border-b border-[#E0E0E0]">
+      <div className="border-border flex border-b">
         {(['blocks', 'layers'] as const).map((t) => (
           <button
             key={t}
@@ -1278,9 +1350,9 @@ function LeftSidebar({
                       <button
                         key={item.type}
                         onClick={() => onAddBlock(item.type)}
-                        className="group hover:border-primary/30 hover:bg-primary/5 flex flex-col items-center gap-1.5 rounded-xl border border-[#EBEBEB] bg-[#FAFAFA] p-3 text-center transition hover:shadow-sm"
+                        className="border-border bg-muted/20 group hover:border-primary/30 hover:bg-primary/5 flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition hover:shadow-sm"
                       >
-                        <div className="group-hover:ring-primary/30 flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-black/5 transition">
+                        <div className="bg-background group-hover:ring-primary/30 flex h-8 w-8 items-center justify-center rounded-lg shadow-sm ring-1 ring-black/5 transition">
                           <Icon className="text-muted-foreground group-hover:text-primary h-4 w-4" />
                         </div>
                         <span className="text-foreground text-[11px] leading-tight font-medium">
@@ -1373,8 +1445,8 @@ function RightInspector({
   onMoveDown?: () => void;
 }) {
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-[#E0E0E0] bg-white">
-      <div className="border-b border-[#E0E0E0] px-4 py-3">
+    <aside className="bg-card border-border flex w-72 shrink-0 flex-col border-l">
+      <div className="border-border px-4 py-3">
         <p className="text-muted-foreground text-[10px] font-semibold tracking-widest uppercase">
           Inspector
         </p>
@@ -1424,11 +1496,11 @@ function BlockInspector({
 }) {
   const Icon = getBlockIcon(block.type);
   return (
-    <div className="divide-y divide-[#F0F0F0]">
+    <div className="divide-border divide-y">
       {/* Block info */}
       <div className="px-4 py-4">
-        <div className="flex items-center gap-3 rounded-xl border border-[#EBEBEB] bg-[#FAFAFA] p-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-black/5">
+        <div className="bg-muted/20 border-border flex items-center gap-3 rounded-xl border p-3">
+          <div className="bg-background flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ring-1 ring-black/5">
             <Icon className="text-muted-foreground h-4 w-4" />
           </div>
           <div>
@@ -1517,7 +1589,7 @@ function PageInspector({
   ) => void;
 }) {
   return (
-    <div className="divide-y divide-[#F0F0F0]">
+    <div className="divide-border divide-y">
       <div className="px-4 py-4">
         <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-widest uppercase">
           Page
@@ -1632,12 +1704,12 @@ function InspectorActionButton({
 function EmptyCanvas({ onAddBlock }: { onAddBlock: () => void }) {
   return (
     <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 p-10">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed border-[#DCDCDC]">
-        <Plus className="h-6 w-6 text-[#BABABA]" />
+      <div className="border-border flex h-14 w-14 items-center justify-center rounded-2xl border-2 border-dashed">
+        <Plus className="text-muted-foreground h-6 w-6" />
       </div>
       <div className="text-center">
-        <p className="font-medium text-slate-800">This page is empty</p>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="text-foreground font-medium">This page is empty</p>
+        <p className="text-muted-foreground mt-1 text-sm">
           Add your first block from the sidebar
         </p>
       </div>
@@ -1646,7 +1718,7 @@ function EmptyCanvas({ onAddBlock }: { onAddBlock: () => void }) {
           e.stopPropagation();
           onAddBlock();
         }}
-        className="border-border text-foreground rounded-xl border bg-white px-5 py-2 text-sm font-medium shadow-sm transition hover:shadow-md"
+        className="bg-background border-border text-foreground rounded-xl border px-5 py-2 text-sm font-medium shadow-sm transition hover:shadow-md"
       >
         + Add a block
       </button>
@@ -1661,7 +1733,7 @@ function AddSectionButton({ onClick }: { onClick: () => void }) {
         e.stopPropagation();
         onClick();
       }}
-      className="group flex w-full items-center justify-center gap-2 border-t border-dashed border-[#DCDCDC] py-4 text-sm text-slate-400 transition hover:bg-slate-50 hover:text-slate-600"
+      className="text-muted-foreground hover:text-foreground group border-border hover:bg-muted flex w-full items-center justify-center gap-2 border-t border-dashed py-4 text-sm transition"
     >
       <Plus className="h-4 w-4" />
       Add section
@@ -1680,9 +1752,9 @@ function PageHeaderPreview({
 }) {
   return (
     <div
-      className="border-b px-8 py-10"
+      className="border-border border-b px-8 py-10"
       style={{
-        background: `linear-gradient(135deg, ${theme.accentMuted}, rgba(255,255,255,0.96))`,
+        background: `linear-gradient(135deg, ${theme.accentMuted}, ${theme.surface})`,
         borderColor: theme.border,
       }}
     >
@@ -1692,8 +1764,8 @@ function PageHeaderPreview({
       >
         {pageLabel}
       </span>
-      <h2 className="text-2xl font-semibold text-slate-900">{pageLabel}</h2>
-      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
+      <h2 className="text-foreground text-2xl font-semibold">{pageLabel}</h2>
+      <p className="text-muted-foreground mt-2 max-w-xl text-sm leading-6">
         {intro ||
           'Add a page intro in the inspector to give this page context.'}
       </p>
@@ -1704,6 +1776,8 @@ function PageHeaderPreview({
 // ─── Block Renderer ───────────────────────────────────────────────────────────
 
 function BlockRenderer({
+  client,
+  projectId,
   block,
   selected,
   canMoveUp,
@@ -1718,6 +1792,8 @@ function BlockRenderer({
   theme,
   sectionSpacingStyle,
 }: {
+  client: DatabaseClient;
+  projectId: string;
   block: Block;
   selected: boolean;
   canMoveUp: boolean;
@@ -1748,14 +1824,14 @@ function BlockRenderer({
     <div
       className={`group relative cursor-pointer transition-all ${
         selected
-          ? 'ring-2 ring-blue-400 ring-inset'
-          : 'hover:ring-2 hover:ring-slate-200 hover:ring-inset'
+          ? 'ring-primary ring-2 ring-inset'
+          : 'hover:ring-border hover:ring-2 hover:ring-inset'
       }`}
       onClick={onSelect}
     >
       {/* Floating toolbar */}
       <div
-        className={`absolute top-3 right-3 z-10 flex items-center gap-0.5 rounded-xl border border-white/60 bg-white/95 p-1 shadow-lg backdrop-blur-sm transition-all ${
+        className={`bg-card/95 border-border absolute top-3 right-3 z-10 flex items-center gap-0.5 rounded-xl border p-1 shadow-lg backdrop-blur-sm transition-all ${
           selected
             ? 'translate-y-0 opacity-100'
             : '-translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100'
@@ -1799,7 +1875,7 @@ function BlockRenderer({
           className={`px-10 ${heroAlign === 'left' ? 'text-left' : 'text-center'}`}
           style={{
             ...sectionSpacingStyle,
-            background: `linear-gradient(135deg, ${theme.accentMuted}, rgba(255,255,255,0.98))`,
+            background: `linear-gradient(135deg, ${theme.accentMuted}, ${theme.surface})`,
           }}
         >
           <div
@@ -1819,7 +1895,7 @@ function BlockRenderer({
                   content: { ...content, title: e.target.value },
                 })
               }
-              className="mb-3 block w-full bg-transparent text-4xl font-bold text-slate-900 outline-none placeholder:text-slate-400 md:text-5xl"
+              className="text-foreground placeholder:text-muted-foreground mb-3 block w-full bg-transparent text-4xl font-bold outline-none md:text-5xl"
               placeholder="Hero title"
             />
             <input
@@ -1830,7 +1906,7 @@ function BlockRenderer({
                   content: { ...content, subtitle: e.target.value },
                 })
               }
-              className="block w-full bg-transparent text-lg text-slate-500 outline-none placeholder:text-slate-400"
+              className="text-muted-foreground placeholder:text-muted-foreground block w-full bg-transparent text-lg outline-none"
               placeholder="Subtitle"
             />
             <div
@@ -1843,7 +1919,7 @@ function BlockRenderer({
                 Primary action
               </span>
               <span
-                className="rounded-xl border px-5 py-2.5 text-sm font-semibold text-slate-700"
+                className="bg-background text-foreground rounded-xl border px-5 py-2.5 text-sm font-semibold"
                 style={cardStyle}
               >
                 Secondary
@@ -1864,9 +1940,102 @@ function BlockRenderer({
                 content: { ...content, text: e.target.value },
               })
             }
-            className="min-h-[140px] w-full resize-none bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
+            className="text-foreground placeholder:text-muted-foreground min-h-[140px] w-full resize-none bg-transparent outline-none"
             placeholder="Write your content…"
           />
+        </div>
+      )}
+
+      {/* ── Image ── */}
+      {block.type === 'image' && (
+        <div className="px-8" style={sectionSpacingStyle}>
+          <div className="mx-auto max-w-4xl space-y-5">
+            <ImageUploader
+              value={content.imageUrl ?? null}
+              onValueChange={async (file) => {
+                const existingPath =
+                  typeof content.imagePath === 'string'
+                    ? content.imagePath
+                    : content.imageUrl ?? null;
+
+                if (!file) {
+                  if (existingPath) {
+                    await deleteSiteImage(client, existingPath).catch(() => null);
+                  }
+
+                  onChange({
+                    ...block,
+                    content: {
+                      ...content,
+                      imageUrl: null,
+                      imagePath: null,
+                    },
+                  });
+                  return;
+                }
+
+                try {
+                  const nextImage = await uploadSiteImage(
+                    client,
+                    file,
+                    projectId,
+                    block.id,
+                  );
+
+                  if (existingPath) {
+                    await deleteSiteImage(client, existingPath).catch(() => null);
+                  }
+
+                  onChange({
+                    ...block,
+                    content: {
+                      ...content,
+                      ...nextImage,
+                      altText: content.altText ?? 'Uploaded image',
+                      caption: content.caption ?? '',
+                    },
+                  });
+
+                  toast.success('Image uploaded');
+                } catch (error) {
+                  console.error(error);
+                  toast.error('Failed to upload image');
+                }
+              }}
+            >
+              <div className="flex flex-col space-y-1">
+                <span className="text-sm font-medium text-foreground">
+                  Upload image
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  Drop in a photo for this section or choose a file.
+                </span>
+              </div>
+            </ImageUploader>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                value={content.altText ?? ''}
+                onChange={(e) =>
+                  onChange({
+                    ...block,
+                    content: { ...content, altText: e.target.value },
+                  })
+                }
+                placeholder="Alt text"
+              />
+              <Input
+                value={content.caption ?? ''}
+                onChange={(e) =>
+                  onChange({
+                    ...block,
+                    content: { ...content, caption: e.target.value },
+                  })
+                }
+                placeholder="Caption"
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -1893,7 +2062,7 @@ function BlockRenderer({
                   next[i] = e.target.value;
                   onChange({ ...block, content: { ...content, items: next } });
                 }}
-                className="w-full bg-transparent text-sm font-semibold text-slate-800 outline-none"
+                className="text-foreground w-full bg-transparent text-sm font-semibold outline-none"
                 placeholder={`Feature ${i + 1}`}
               />
             </div>
@@ -2079,7 +2248,7 @@ function BlockRenderer({
 function BlockToolbarLabel({ type }: { type: string }) {
   const Icon = getBlockIcon(type);
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-slate-600">
+    <div className="text-muted-foreground flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium">
       <Icon className="h-3 w-3" />
       {getBlockLabel(type)}
     </div>
@@ -2110,7 +2279,7 @@ function ToolbarBtn({
       className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
         disabled
           ? 'cursor-not-allowed opacity-30'
-          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       } ${className ?? ''}`}
     >
       {children}
@@ -2144,9 +2313,11 @@ function DataBlock({
           >
             {title}
           </p>
-          {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+          {hint && (
+            <p className="text-muted-foreground mt-0.5 text-xs">{hint}</p>
+          )}
         </div>
-        <span className="rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+        <span className="bg-background/70 text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-medium">
           Live data
         </span>
       </div>
@@ -2187,7 +2358,7 @@ function SkeletonLine({
 }) {
   return (
     <div
-      className={`rounded-md bg-slate-200 ${className ?? ''}`}
+      className={`bg-muted rounded-md ${className ?? ''}`}
       style={{ width: w, height: h }}
     />
   );
@@ -2580,7 +2751,7 @@ function ToggleField({
         className={`relative h-5 w-9 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-muted'}`}
       >
         <div
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
+          className={`bg-background absolute top-0.5 h-4 w-4 rounded-full shadow-sm transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`}
         />
       </div>
     </label>

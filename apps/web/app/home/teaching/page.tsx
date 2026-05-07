@@ -15,7 +15,7 @@ function TeachingPage() {
 
   return (
     <PageBody>
-      <TutorialContent user={user} />
+      <TutorialContent user={user as any} />
     </PageBody>
   );
 }

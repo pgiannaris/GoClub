@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useParams } from 'next/navigation';
 
-import { ChevronDown, Pencil, Repeat, Trash } from 'lucide-react';
+import { CalendarDays, ChevronDown, Pencil, Repeat, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@kit/ui/button';
 import { Card, CardContent } from '@kit/ui/card';
+import { Checkbox } from '@kit/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ import {
 type EventRecord = {
   id: string;
   project_id: string;
+  series_id?: string | null;
   title: string;
   description: string | null;
   start_at: string;
@@ -67,8 +69,9 @@ type EventForm = {
   description: string;
   startAt: string;
   endAt: string;
+  recurringStartTime: string;
+  recurringEndTime: string;
   location: string;
-  rsvpUrl: string;
   visibility: 'public' | 'members';
   recurrence: 'none' | 'weekly';
   recurrenceCount: number;
@@ -80,8 +83,9 @@ const EMPTY_FORM: EventForm = {
   description: '',
   startAt: '',
   endAt: '',
+  recurringStartTime: '',
+  recurringEndTime: '',
   location: '',
-  rsvpUrl: '',
   visibility: 'members',
   recurrence: 'none',
   recurrenceCount: 8,
@@ -132,9 +136,17 @@ export default function EventsPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<EventRecord | null>(null);
+  const [deleteRecurringSeries, setDeleteRecurringSeries] = useState(false);
+  const [editRecurringModalOpen, setEditRecurringModalOpen] = useState(false);
+  const [editAllRecurringEvents, setEditAllRecurringEvents] = useState(false);
+  const seriesCandidates = selectedEvent
+    ? getRecurringSeriesCandidates(events, selectedEvent)
+    : [];
   const [form, setForm] = useState<EventForm>(EMPTY_FORM);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
-  const [createStep, setCreateStep] = useState<'type' | 'details'>('type');
+  const [createStep, setCreateStep] = useState<
+    'type' | 'recurring' | 'details'
+  >('type');
 
   useEffect(() => {
     if (!projectId) return;
@@ -192,6 +204,8 @@ export default function EventsPage() {
     setForm({
       ...EMPTY_FORM,
       startAt: toDateTimeLocalInput(new Date()),
+      recurringStartTime: '18:00',
+      recurringEndTime: '19:30',
     });
     setCreateStep('type');
     setCreateModalOpen(true);
@@ -199,13 +213,15 @@ export default function EventsPage() {
 
   const openEditModal = (ev: EventRecord) => {
     setSelectedEvent(ev);
+    setEditAllRecurringEvents(false);
     setForm({
       title: ev.title,
       description: ev.description ?? '',
       startAt: toDateTimeLocalInput(new Date(ev.start_at)),
       endAt: ev.end_at ? toDateTimeLocalInput(new Date(ev.end_at)) : '',
+      recurringStartTime: toTimeInputValue(new Date(ev.start_at)),
+      recurringEndTime: ev.end_at ? toTimeInputValue(new Date(ev.end_at)) : '',
       location: ev.location ?? '',
-      rsvpUrl: ev.rsvp_url ?? '',
       visibility: ev.visibility === 'public' ? 'public' : 'members',
       recurrence: 'none',
       recurrenceCount: 8,
@@ -227,13 +243,25 @@ export default function EventsPage() {
       return;
     }
 
-    if (!form.startAt) {
+    if (!form.startAt && form.recurrence !== 'weekly') {
       toast.error('Choose a start date and time');
       return;
     }
-
-    const startAt = normalizeDateTimeLocal(form.startAt);
-    const endAt = normalizeDateTimeLocal(form.endAt);
+    let startAt = normalizeDateTimeLocal(form.startAt);
+    let endAt = normalizeDateTimeLocal(form.endAt);
+    if (form.recurrence === 'weekly' && !selectedEvent) {
+      if (!form.recurringStartTime) {
+        toast.error('Choose recurring start time');
+        return;
+      }
+      const baseDate = new Date().toISOString().slice(0, 10);
+      startAt = normalizeDateTimeLocal(
+        `${baseDate}T${form.recurringStartTime}`,
+      );
+      endAt = form.recurringEndTime
+        ? normalizeDateTimeLocal(`${baseDate}T${form.recurringEndTime}`)
+        : null;
+    }
 
     if (!startAt) {
       toast.error('Start date is invalid');
@@ -254,60 +282,89 @@ export default function EventsPage() {
 
     try {
       if (selectedEvent) {
-        const response = await fetch(
-          `/api/projects/${encodeURIComponent(projectId)}/events/${encodeURIComponent(selectedEvent.id)}`,
-          {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: {
-              'content-type': 'application/json',
-            },
-            body: JSON.stringify({
-              title,
-              description: form.description.trim() || null,
-              start_at: startAt,
-              end_at: endAt,
-              location: form.location.trim() || null,
-              rsvp_url: form.rsvpUrl.trim() || null,
-              visibility: form.visibility,
-            }),
-          },
+        const seriesCandidates = getRecurringSeriesCandidates(
+          events,
+          selectedEvent,
         );
-
-        const payload = (await response.json().catch(() => ({}))) as {
-          error?: string;
-          event?: EventRecord;
-        };
-
-        if (!response.ok || !payload.event) {
-          throw new Error(payload.error || 'Failed to update event');
+        if (seriesCandidates.length > 1 && !editAllRecurringEvents) {
+          setEditRecurringModalOpen(true);
+          setSaving(false);
+          return;
         }
 
-        setEvents((current) =>
-          sortEvents(
-            current.map((it) =>
-              it.id === payload.event!.id ? (payload.event as EventRecord) : it,
-            ),
-          ),
-        );
+        const targets = editAllRecurringEvents
+          ? seriesCandidates
+          : [selectedEvent];
+        const updatedEvents: EventRecord[] = [];
+        for (const target of targets) {
+          const response = await fetch(
+            `/api/projects/${encodeURIComponent(projectId)}/events/${encodeURIComponent(target.id)}`,
+            {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({
+                title,
+                description: form.description.trim() || null,
+                start_at: startAt,
+                end_at: endAt,
+                location: form.location.trim() || null,
+                visibility: form.visibility,
+              }),
+            },
+          );
+
+          const payload = (await response.json().catch(() => ({}))) as {
+            error?: string;
+            event?: EventRecord;
+          };
+
+          if (!response.ok || !payload.event) {
+            throw new Error(payload.error || 'Failed to update event');
+          }
+          updatedEvents.push(payload.event as EventRecord);
+        }
+
+        setEvents((current) => {
+          const map = new Map(updatedEvents.map((e) => [e.id, e]));
+          return sortEvents(current.map((it) => map.get(it.id) ?? it));
+        });
         setCreateModalOpen(false);
         setSelectedEvent(null);
+        setEditAllRecurringEvents(false);
         setForm(EMPTY_FORM);
-        toast.success('Event updated');
+        toast.success(
+          targets.length === 1
+            ? 'Event updated'
+            : `${targets.length} events updated`,
+        );
       } else {
         const createdEvents: EventRecord[] = [];
-        const weeklyCount = Math.max(1, Math.min(52, Math.floor(form.recurrenceCount || 1)));
+        const weeklyCount = Math.max(
+          1,
+          Math.min(52, Math.floor(form.recurrenceCount || 1)),
+        );
+        // No separate event_series table: record recurrence fields directly on events
         const recurrenceDates =
           form.recurrence === 'weekly' && form.recurrenceDays.length > 0
-            ? buildWeeklyRecurringDates(startAt, form.recurrenceDays, weeklyCount)
+            ? buildWeeklyRecurringDates(
+                startAt,
+                form.recurrenceDays,
+                weeklyCount,
+              )
             : [startAt];
         const occurrences = recurrenceDates.length;
 
         for (const nextStartAt of recurrenceDates) {
           let nextEndAt: string | null = null;
           if (endAt) {
-            const durationMs = new Date(endAt).getTime() - new Date(startAt).getTime();
-            nextEndAt = new Date(new Date(nextStartAt).getTime() + durationMs).toISOString();
+            const durationMs =
+              new Date(endAt).getTime() - new Date(startAt).getTime();
+            nextEndAt = new Date(
+              new Date(nextStartAt).getTime() + durationMs,
+            ).toISOString();
           }
 
           const response = await fetch(
@@ -324,9 +381,28 @@ export default function EventsPage() {
                 start_at: nextStartAt,
                 end_at: nextEndAt,
                 location: form.location.trim() || null,
-                rsvp_url: form.rsvpUrl.trim() || null,
                 status: 'scheduled',
                 visibility: form.visibility,
+                // recurrence metadata stored on the event row
+                is_recurring:
+                  form.recurrence === 'weekly' &&
+                  form.recurrenceDays.length > 0,
+                recurrence_days:
+                  form.recurrence === 'weekly' && form.recurrenceDays.length > 0
+                    ? form.recurrenceDays
+                    : null,
+                recurrence_type:
+                  form.recurrence === 'weekly' ? 'weekly' : 'none',
+                recurrence_count:
+                  form.recurrence === 'weekly' ? weeklyCount : 1,
+                recurrence_start_time:
+                  form.recurrence === 'weekly' && form.recurringStartTime
+                    ? form.recurringStartTime
+                    : null,
+                recurrence_end_time:
+                  form.recurrence === 'weekly' && form.recurringEndTime
+                    ? form.recurringEndTime
+                    : null,
               }),
             },
           );
@@ -337,7 +413,9 @@ export default function EventsPage() {
           };
 
           if (!response.ok || !payload.event) {
-            throw new Error(payload.error || 'Failed to create recurring events');
+            throw new Error(
+              payload.error || 'Failed to create recurring events',
+            );
           }
 
           createdEvents.push(payload.event as EventRecord);
@@ -373,28 +451,41 @@ export default function EventsPage() {
     setDeletingEventId(eventToDelete.id);
 
     try {
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/events/${encodeURIComponent(eventToDelete.id)}`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-        },
-      );
+      const targets = deleteRecurringSeries
+        ? getRecurringSeriesCandidates(events, eventToDelete)
+        : [eventToDelete];
 
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-      };
+      for (const target of targets) {
+        const response = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/events/${encodeURIComponent(target.id)}`,
+          {
+            method: 'DELETE',
+            credentials: 'include',
+          },
+        );
 
-      if (!response.ok) {
-        throw new Error(payload.error || 'Failed to delete event');
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'Failed to delete event');
+        }
       }
 
       setEvents((current) =>
-        current.filter((item) => item.id !== eventToDelete.id),
+        current.filter(
+          (item) => !targets.some((target) => target.id === item.id),
+        ),
       );
       setDeleteModalOpen(false);
       setEventToDelete(null);
-      toast.success('Event deleted');
+      setDeleteRecurringSeries(false);
+      toast.success(
+        targets.length === 1
+          ? 'Event deleted'
+          : `${targets.length} events deleted`,
+      );
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Failed to delete event',
@@ -521,7 +612,7 @@ export default function EventsPage() {
         {!loading &&
           filteredEvents.map((event) => (
             <Card key={event.id}>
-              <CardContent className="flex items-center justify-between gap-4 p-6">
+              <CardContent className="hover:bg-muted/40 relative flex items-start justify-between gap-4 p-6 transition-colors">
                 <div>
                   <h4 className="text-lg font-semibold">{event.title}</h4>
                   <p className="text-muted-foreground text-sm">
@@ -547,7 +638,7 @@ export default function EventsPage() {
                   </div>
                 </div>
                 {canCreateEvents ? (
-                  <div className="flex items-center gap-2">
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
                     <Button
                       variant="ghost"
                       size="icon"
@@ -573,6 +664,7 @@ export default function EventsPage() {
           ))}
       </div>
 
+      {/* Create / Edit Modal */}
       <Dialog
         open={createModalOpen}
         onOpenChange={(open) => {
@@ -593,108 +685,162 @@ export default function EventsPage() {
                 ? 'Update this event.'
                 : createStep === 'type'
                   ? 'Does this event repeat?'
-                  : 'Fill out the event details, then create it for the club calendar.'}
+                  : createStep === 'recurring'
+                    ? 'Choose which days this repeats on.'
+                    : 'Fill out the event details, then create it for the club calendar.'}
             </DialogDescription>
           </DialogHeader>
 
-          {!selectedEvent && createStep === 'type' ? (
+          {/* Step: type selection */}
+          {!selectedEvent && createStep === 'type' && (
             <div className="space-y-3">
               <p className="text-muted-foreground text-sm">
                 Choose one option, then continue to event details.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                className="hover:bg-muted/40 rounded-xl border p-4 text-left transition-colors"
-                onClick={() => {
-                  setForm((prev) => ({ ...prev, recurrence: 'none', recurrenceDays: [] }));
-                  setCreateStep('details');
-                }}
-              >
-                <p className="font-medium">No, one-time event</p>
-                <p className="text-muted-foreground text-sm">Create one event on one date.</p>
-              </button>
-              <button
-                type="button"
-                className="hover:bg-muted/40 rounded-xl border p-4 text-left transition-colors"
-                onClick={() => {
-                  const startDay = new Date(normalizeDateTimeLocal(form.startAt) ?? new Date().toISOString()).getDay();
-                  setForm((prev) => ({ ...prev, recurrence: 'weekly', recurrenceDays: [startDay] }));
-                  setCreateStep('details');
-                }}
-              >
-                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                  <Repeat className="h-5 w-5" />
+                <button
+                  type="button"
+                  className="hover:bg-muted/40 rounded-xl border p-4 text-left transition-colors"
+                  onClick={() => {
+                    setForm((prev) => ({
+                      ...prev,
+                      recurrence: 'none',
+                      recurrenceDays: [],
+                    }));
+                    setCreateStep('details');
+                  }}
+                >
+                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+                  <p className="font-medium">No, one-time event</p>
+                  <p className="text-muted-foreground text-sm">
+                    Create one event on one date.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="hover:bg-muted/40 rounded-xl border p-4 text-left transition-colors"
+                  onClick={() => {
+                    const startDay = new Date(
+                      normalizeDateTimeLocal(form.startAt) ??
+                        new Date().toISOString(),
+                    ).getDay();
+                    setForm((prev) => ({
+                      ...prev,
+                      recurrence: 'weekly',
+                      recurrenceDays: [startDay],
+                    }));
+                    setCreateStep('recurring');
+                  }}
+                >
+                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                    <Repeat className="h-5 w-5" />
+                  </div>
+                  <p className="font-medium">Yes, recurring event</p>
+                  <p className="text-muted-foreground text-sm">
+                    Repeat weekly on selected days.
+                  </p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: recurring day/count selection */}
+          {!selectedEvent && createStep === 'recurring' && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-muted-foreground text-xs">
+                  Repeat on
+                </label>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  {[
+                    { label: 'Sun', value: 0 },
+                    { label: 'Mon', value: 1 },
+                    { label: 'Tue', value: 2 },
+                    { label: 'Wed', value: 3 },
+                    { label: 'Thu', value: 4 },
+                    { label: 'Fri', value: 5 },
+                    { label: 'Sat', value: 6 },
+                  ].map((day) => {
+                    const selected = form.recurrenceDays.includes(day.value);
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        className={`rounded-md border px-2 py-1 text-sm transition-colors ${selected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'hover:bg-muted/40'}`}
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            recurrenceDays: selected
+                              ? prev.recurrenceDays.filter(
+                                  (d) => d !== day.value,
+                                )
+                              : [...prev.recurrenceDays, day.value],
+                          }))
+                        }
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <p className="font-medium">Yes, recurring event</p>
-                <p className="text-muted-foreground text-sm">Repeat weekly on selected days.</p>
-              </button>
               </div>
-            </div>
-          ) : (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <label
-                htmlFor="event-title"
-                className="text-muted-foreground text-xs"
-              >
-                Title
-              </label>
-              <Input
-                id="event-title"
-                value={form.title}
-                maxLength={120}
-                placeholder="Weekly club meeting"
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    title: event.target.value,
-                  }))
-                }
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label
-                htmlFor="event-description"
-                className="text-muted-foreground text-xs"
-              >
-                Description
-              </label>
-              <Textarea
-                id="event-description"
-                rows={5}
-                maxLength={3000}
-                placeholder="What is happening at this event?"
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    description: event.target.value,
-                  }))
-                }
-              />
-              <div className="text-muted-foreground text-right text-xs">
-                {form.description.length}/3000
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
-                <label
-                  htmlFor="event-start"
-                  className="text-muted-foreground text-xs"
-                >
-                  Start
+                <label className="text-muted-foreground text-xs">
+                  Number of meetings
                 </label>
                 <Input
-                  id="event-start"
-                  type="datetime-local"
-                  value={form.startAt}
+                  type="number"
+                  min={1}
+                  max={52}
+                  value={form.recurrenceCount}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
-                      startAt: event.target.value,
+                      recurrenceCount: Number(event.target.value) || 1,
+                    }))
+                  }
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCreateStep('type')}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setCreateStep('details')}
+                  disabled={form.recurrenceDays.length === 0}
+                >
+                  Continue
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: event details (also used for edit) */}
+          {(createStep === 'details' || !!selectedEvent) && (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label
+                  htmlFor="event-title"
+                  className="text-muted-foreground text-xs"
+                >
+                  Title
+                </label>
+                <Input
+                  id="event-title"
+                  value={form.title}
+                  maxLength={120}
+                  placeholder="Weekly club meeting"
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      title: event.target.value,
                     }))
                   }
                 />
@@ -702,26 +848,106 @@ export default function EventsPage() {
 
               <div className="space-y-1">
                 <label
-                  htmlFor="event-end"
+                  htmlFor="event-description"
                   className="text-muted-foreground text-xs"
                 >
-                  End
+                  Description
                 </label>
-                <Input
-                  id="event-end"
-                  type="datetime-local"
-                  value={form.endAt}
+                <Textarea
+                  id="event-description"
+                  rows={5}
+                  maxLength={3000}
+                  placeholder="What is happening at this event?"
+                  value={form.description}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
-                      endAt: event.target.value,
+                      description: event.target.value,
                     }))
                   }
                 />
+                <div className="text-muted-foreground text-right text-xs">
+                  {form.description.length}/3000
+                </div>
               </div>
-            </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+              {form.recurrence === 'weekly' && !selectedEvent ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-muted-foreground text-xs">
+                      Start time
+                    </label>
+                    <Input
+                      type="time"
+                      value={form.recurringStartTime}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          recurringStartTime: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-muted-foreground text-xs">
+                      End time
+                    </label>
+                    <Input
+                      type="time"
+                      value={form.recurringEndTime}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          recurringEndTime: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="event-start"
+                      className="text-muted-foreground text-xs"
+                    >
+                      Start
+                    </label>
+                    <Input
+                      id="event-start"
+                      type="datetime-local"
+                      value={form.startAt}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          startAt: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="event-end"
+                      className="text-muted-foreground text-xs"
+                    >
+                      End
+                    </label>
+                    <Input
+                      id="event-end"
+                      type="datetime-local"
+                      value={form.endAt}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          endAt: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label
                   htmlFor="event-location"
@@ -744,176 +970,96 @@ export default function EventsPage() {
 
               <div className="space-y-1">
                 <label
-                  htmlFor="event-rsvp"
+                  htmlFor="event-visibility"
                   className="text-muted-foreground text-xs"
                 >
-                  RSVP URL
+                  Visibility
                 </label>
-                <Input
-                  id="event-rsvp"
-                  type="url"
-                  value={form.rsvpUrl}
-                  placeholder="https://..."
-                  onChange={(event) =>
+                <Select
+                  value={form.visibility}
+                  onValueChange={(value) =>
                     setForm((prev) => ({
                       ...prev,
-                      rsvpUrl: event.target.value,
+                      visibility: value === 'public' ? 'public' : 'members',
                     }))
                   }
-                />
+                >
+                  <SelectTrigger id="event-visibility">
+                    <SelectValue placeholder="Select visibility" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="members">Members only</SelectItem>
+                    <SelectItem value="public">Public</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
 
-            <div className="space-y-1">
-              <label
-                htmlFor="event-visibility"
-                className="text-muted-foreground text-xs"
-              >
-                Visibility
-              </label>
-              <Select
-                value={form.visibility}
-                onValueChange={(value) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    visibility: value === 'public' ? 'public' : 'members',
-                  }))
-                }
-              >
-                <SelectTrigger id="event-visibility">
-                  <SelectValue placeholder="Select visibility" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="members">Members only</SelectItem>
-                  <SelectItem value="public">Public</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {!selectedEvent ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-muted-foreground text-xs">
-                    Repeats
+              <div className="flex justify-end gap-2">
+                {selectedEvent && seriesCandidates.length > 1 ? (
+                  <label className="mr-auto flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={editAllRecurringEvents}
+                      onCheckedChange={(checked) =>
+                        setEditAllRecurringEvents(Boolean(checked))
+                      }
+                    />
+                    Apply changes to all {seriesCandidates.length} matching
+                    recurring events
                   </label>
-                  <Select
-                    value={form.recurrence}
-                    onValueChange={(value) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        recurrence: value === 'weekly' ? 'weekly' : 'none',
-                      }))
+                ) : null}
+                {!selectedEvent ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setCreateStep(
+                        form.recurrence === 'weekly' ? 'recurring' : 'type',
+                      )
                     }
+                    disabled={saving || createStep === 'type'}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Does not repeat" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Does not repeat</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-muted-foreground text-xs">
-                    Number of meetings
-                  </label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={52}
-                    value={form.recurrenceCount}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        recurrenceCount: Number(event.target.value) || 1,
-                      }))
-                    }
-                    disabled={form.recurrence !== 'weekly'}
-                  />
-                </div>
-              </div>
-            ) : null}
-            {!selectedEvent && form.recurrence === 'weekly' ? (
-              <div className="space-y-2">
-                <label className="text-muted-foreground text-xs">Repeat on</label>
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-                  {[
-                    { label: 'Sun', value: 0 },
-                    { label: 'Mon', value: 1 },
-                    { label: 'Tue', value: 2 },
-                    { label: 'Wed', value: 3 },
-                    { label: 'Thu', value: 4 },
-                    { label: 'Fri', value: 5 },
-                    { label: 'Sat', value: 6 },
-                  ].map((day) => {
-                    const selected = form.recurrenceDays.includes(day.value);
-                    return (
-                      <button
-                        key={day.value}
-                        type="button"
-                        className={`rounded-md border px-2 py-1 text-sm transition-colors ${selected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'hover:bg-muted/40'}`}
-                        onClick={() =>
-                          setForm((prev) => ({
-                            ...prev,
-                            recurrenceDays: selected
-                              ? prev.recurrenceDays.filter((d) => d !== day.value)
-                              : [...prev.recurrenceDays, day.value],
-                          }))
-                        }
-                      >
-                        {day.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex justify-end gap-2">
-              {!selectedEvent ? (
+                    Back
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setCreateStep('type')}
-                  disabled={saving || createStep === 'type'}
+                  onClick={() => setCreateModalOpen(false)}
+                  disabled={saving}
                 >
-                  Back
+                  Cancel
                 </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCreateModalOpen(false)}
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void createEvent()}
-                disabled={saving || (form.recurrence === 'weekly' && form.recurrenceDays.length === 0)}
-              >
-                {saving
-                  ? selectedEvent
-                    ? 'Updating...'
-                    : 'Creating...'
-                  : selectedEvent
-                    ? 'Update Event'
-                    : 'Create Event'}
-              </Button>
+                <Button
+                  type="button"
+                  onClick={() => void createEvent()}
+                  disabled={
+                    saving ||
+                    (form.recurrence === 'weekly' &&
+                      form.recurrenceDays.length === 0)
+                  }
+                >
+                  {saving
+                    ? selectedEvent
+                      ? 'Updating...'
+                      : 'Creating...'
+                    : selectedEvent
+                      ? 'Update Event'
+                      : 'Create Event'}
+                </Button>
+              </div>
             </div>
-          </div>
           )}
         </DialogContent>
       </Dialog>
 
+      {/* Delete Modal */}
       <Dialog
         open={deleteModalOpen}
         onOpenChange={(open) => {
           setDeleteModalOpen(open);
           if (!open) {
             setEventToDelete(null);
+            setDeleteRecurringSeries(false);
           }
         }}
       >
@@ -926,6 +1072,17 @@ export default function EventsPage() {
                 : 'This will permanently delete this event.'}
             </DialogDescription>
           </DialogHeader>
+          {eventToDelete ? (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={deleteRecurringSeries}
+                onCheckedChange={(checked) =>
+                  setDeleteRecurringSeries(Boolean(checked))
+                }
+              />
+              Delete all matching recurring events
+            </label>
+          ) : null}
           <DialogFooter>
             <Button
               type="button"
@@ -944,6 +1101,45 @@ export default function EventsPage() {
               {eventToDelete && deletingEventId === eventToDelete.id
                 ? 'Deleting...'
                 : 'Delete Event'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit recurring confirmation modal */}
+      <Dialog
+        open={editRecurringModalOpen}
+        onOpenChange={setEditRecurringModalOpen}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apply changes to recurring events?</DialogTitle>
+            <DialogDescription>
+              This event appears to be part of a recurring set. Choose whether
+              to update only this event or all matching recurring events.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEditRecurringModalOpen(false);
+                setEditAllRecurringEvents(false);
+                void createEvent();
+              }}
+            >
+              This event only
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setEditRecurringModalOpen(false);
+                setEditAllRecurringEvents(true);
+                void createEvent();
+              }}
+            >
+              All recurring events
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1001,6 +1197,33 @@ function buildWeeklyRecurringDates(
   }
 
   return results.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+}
+
+function toTimeInputValue(date: Date) {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function getRecurringSeriesCandidates(
+  events: EventRecord[],
+  seed: EventRecord,
+) {
+  // Prefer series_id when available (new DB layout)
+  if (seed.series_id) {
+    return events.filter((e) => e.series_id === seed.series_id);
+  }
+
+  const seedStart = new Date(seed.start_at);
+  const seedTime = `${seedStart.getUTCHours()}:${seedStart.getUTCMinutes()}`;
+  return events.filter((event) => {
+    if (event.title !== seed.title) return false;
+    if ((event.location ?? '') !== (seed.location ?? '')) return false;
+    if (event.visibility !== seed.visibility) return false;
+    const start = new Date(event.start_at);
+    const time = `${start.getUTCHours()}:${start.getUTCMinutes()}`;
+    return time === seedTime;
+  });
 }
 
 function toDateTimeLocalInput(date: Date) {

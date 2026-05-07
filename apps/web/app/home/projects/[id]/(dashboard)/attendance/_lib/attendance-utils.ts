@@ -1,6 +1,11 @@
 'use client';
 
-export type AttendanceStatus = 'present' | 'late' | 'excused' | 'absent';
+export type AttendanceStatus =
+  | 'present'
+  | 'late'
+  | 'excused'
+  | 'absent'
+  | 'unmarked';
 export type StatusFilter = 'all' | AttendanceStatus;
 export type AttendanceTypeFilter = 'all' | 'roster' | 'manual';
 export type ExcusedWeight = 0 | 0.5;
@@ -16,6 +21,7 @@ export type AttendanceSession = {
   project_id: string;
   title: string;
   meeting_date: string;
+  event_id: string | null;
   notes: string | null;
   is_public: boolean;
   created_at: string | null;
@@ -82,7 +88,13 @@ export const ATTENDANCE_STATUS_OPTIONS: Array<{
 ];
 
 export function coerceAttendanceStatus(value: unknown): AttendanceStatus {
-  if (value === 'present' || value === 'late' || value === 'excused' || value === 'absent') {
+  if (
+    value === 'present' ||
+    value === 'late' ||
+    value === 'excused' ||
+    value === 'absent' ||
+    value === 'unmarked'
+  ) {
     return value;
   }
 
@@ -93,13 +105,19 @@ export function statusLabel(status: AttendanceStatus) {
   if (status === 'present') return 'Present';
   if (status === 'late') return 'Late';
   if (status === 'excused') return 'Excused';
+  if (status === 'unmarked') return 'Unmarked';
   return 'Absent';
 }
 
 export function statusBadgeClass(status: AttendanceStatus) {
-  if (status === 'present') return 'border-green-200 bg-green-50 text-green-700';
-  if (status === 'late') return 'border-orange-200 bg-orange-50 text-orange-700';
-  if (status === 'excused') return 'border-yellow-200 bg-yellow-50 text-yellow-700';
+  if (status === 'present')
+    return 'border-green-200 bg-green-50 text-green-700';
+  if (status === 'late')
+    return 'border-orange-200 bg-orange-50 text-orange-700';
+  if (status === 'excused')
+    return 'border-yellow-200 bg-yellow-50 text-yellow-700';
+  if (status === 'unmarked')
+    return 'border-slate-200 bg-slate-50 text-slate-600';
   return 'border-red-200 bg-red-50 text-red-700';
 }
 
@@ -107,19 +125,27 @@ export function statusButtonClass(status: AttendanceStatus, active: boolean) {
   if (active) {
     if (status === 'present') return 'border-green-600 bg-green-600 text-white';
     if (status === 'late') return 'border-orange-500 bg-orange-500 text-white';
-    if (status === 'excused') return 'border-yellow-500 bg-yellow-500 text-white';
+    if (status === 'excused')
+      return 'border-yellow-500 bg-yellow-500 text-white';
     return 'border-red-600 bg-red-600 text-white';
   }
 
-  if (status === 'present') return 'border-green-200 text-green-700 hover:bg-green-50';
-  if (status === 'late') return 'border-orange-200 text-orange-700 hover:bg-orange-50';
-  if (status === 'excused') return 'border-yellow-200 text-yellow-700 hover:bg-yellow-50';
+  if (status === 'present')
+    return 'border-green-200 text-green-700 hover:bg-green-50';
+  if (status === 'late')
+    return 'border-orange-200 text-orange-700 hover:bg-orange-50';
+  if (status === 'excused')
+    return 'border-yellow-200 text-yellow-700 hover:bg-yellow-50';
   return 'border-red-200 text-red-700 hover:bg-red-50';
 }
 
-export function getAttendanceWeight(status: AttendanceStatus, excusedWeight: ExcusedWeight = 0.5) {
+export function getAttendanceWeight(
+  status: AttendanceStatus,
+  excusedWeight: ExcusedWeight = 0.5,
+) {
   if (status === 'present' || status === 'late') return 1;
   if (status === 'excused') return excusedWeight;
+  if (status === 'unmarked') return 0;
   return 0;
 }
 
@@ -131,6 +157,9 @@ export function calculateSessionStats(
     (acc, row) => {
       acc.total += 1;
       acc[row.status] += 1;
+      if (row.status === 'unmarked') {
+        acc.absent += 0;
+      }
       acc.weighted += getAttendanceWeight(row.status, excusedWeight);
       return acc;
     },
@@ -140,13 +169,15 @@ export function calculateSessionStats(
       late: 0,
       excused: 0,
       absent: 0,
+      unmarked: 0,
       weighted: 0,
     },
   );
 
   return {
     ...totals,
-    rate: totals.total > 0 ? Math.round((totals.weighted / totals.total) * 100) : 0,
+    rate:
+      totals.total > 0 ? Math.round((totals.weighted / totals.total) * 100) : 0,
   };
 }
 
@@ -192,7 +223,12 @@ export function buildOverallAttendanceRows(params: {
 
   const allPeople = new Map<
     string,
-    { key: string; member_id: string | null; member_name: string; is_roster: boolean }
+    {
+      key: string;
+      member_id: string | null;
+      member_name: string;
+      is_roster: boolean;
+    }
   >();
 
   members.forEach((member) => {
@@ -205,7 +241,9 @@ export function buildOverallAttendanceRows(params: {
   });
 
   const memberIdByName = new Map(
-    members.map((member) => [normalizeName(member.full_name), member.id] as const),
+    members.map(
+      (member) => [normalizeName(member.full_name), member.id] as const,
+    ),
   );
 
   Object.values(entriesBySession).forEach((sessionEntries) => {
@@ -237,7 +275,11 @@ export function buildOverallAttendanceRows(params: {
 
       sessions.forEach((session) => {
         const sessionEntries = entriesBySession[session.id] ?? [];
-        const found = findEntryForPerson(sessionEntries, person.member_id, person.member_name);
+        const found = findEntryForPerson(
+          sessionEntries,
+          person.member_id,
+          person.member_name,
+        );
         const status = found?.status ?? 'absent';
 
         if (status === 'present') presentCount += 1;
@@ -249,7 +291,9 @@ export function buildOverallAttendanceRows(params: {
       });
 
       const percent =
-        sessions.length > 0 ? Math.round((weightedAttendance / sessions.length) * 100) : 0;
+        sessions.length > 0
+          ? Math.round((weightedAttendance / sessions.length) * 100)
+          : 0;
 
       return {
         ...person,
@@ -262,14 +306,20 @@ export function buildOverallAttendanceRows(params: {
         total_sessions: sessions.length,
       } satisfies OverallAttendanceRow;
     })
-    .sort((a, b) => b.percent - a.percent || a.member_name.localeCompare(b.member_name));
+    .sort(
+      (a, b) =>
+        b.percent - a.percent || a.member_name.localeCompare(b.member_name),
+    );
 }
 
 export function memberKey(id: string) {
   return `member:${id}`;
 }
 
-export function attendanceEntryKey(memberId: string | null, memberName: string) {
+export function attendanceEntryKey(
+  memberId: string | null,
+  memberName: string,
+) {
   return memberId ? memberKey(memberId) : nameKey(memberName);
 }
 
@@ -315,7 +365,10 @@ export function formatReadableDate(dateValue: string) {
   });
 }
 
-export function sortSessionsByDateDesc(a: AttendanceSession, b: AttendanceSession) {
+export function sortSessionsByDateDesc(
+  a: AttendanceSession,
+  b: AttendanceSession,
+) {
   return sortDateStringsDesc(a.meeting_date, b.meeting_date);
 }
 
@@ -342,5 +395,7 @@ export function findEntryForPerson(
   }
 
   const normalized = normalizeName(memberName);
-  return sessionEntries.find((entry) => normalizeName(entry.member_name) === normalized);
+  return sessionEntries.find(
+    (entry) => normalizeName(entry.member_name) === normalized,
+  );
 }

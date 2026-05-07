@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 
+import { useSupabase } from '@kit/supabase/hooks/use-supabase';
 import { Badge } from '@kit/ui/badge';
 import { Button } from '@kit/ui/button';
 import { Card, CardContent } from '@kit/ui/card';
@@ -42,12 +43,53 @@ import { AttendanceStatusSelector } from './_components/attendance-status-contro
 import {
   ATTENDANCE_STATUS_OPTIONS,
   type StatusFilter,
-  calculateSessionStats,
   capitalize,
   defaultSessionTitle,
   formatReadableDate,
 } from './_lib/attendance-utils';
 import { useAttendanceWorkspace } from './_lib/use-attendance-workspace';
+
+type EventLinkCandidate = {
+  id: string;
+  title: string;
+  start_at: string;
+  end_at: string | null;
+  location: string | null;
+};
+
+type LinkContext = 'draft' | 'session';
+
+type AttendanceQueryResult = {
+  data: unknown;
+  error: { message: string } | null;
+};
+
+type AttendanceQueryBuilder = {
+  select(columns: string): AttendanceQueryBuilder;
+  eq(column: string, value: string): AttendanceQueryBuilder;
+  gte(column: string, value: string): AttendanceQueryBuilder;
+  lte(column: string, value: string): AttendanceQueryBuilder;
+  order(
+    column: string,
+    options?: { ascending?: boolean },
+  ): AttendanceQueryBuilder;
+  in(column: string, values: string[]): AttendanceQueryBuilder;
+  insert(values: unknown): AttendanceQueryBuilder;
+  update(values: unknown): AttendanceQueryBuilder;
+  delete(): AttendanceQueryBuilder;
+  maybeSingle(): Promise<AttendanceQueryResult>;
+  single(): Promise<AttendanceQueryResult>;
+  then<TResult1 = AttendanceQueryResult, TResult2 = never>(
+    onfulfilled?:
+      | ((value: AttendanceQueryResult) => TResult1 | PromiseLike<TResult1>)
+      | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2>;
+};
+
+type AttendanceSupabaseClient = {
+  from(relation: string): AttendanceQueryBuilder;
+};
 
 export default function AttendancePage() {
   const params = useParams<{ id: string }>();
@@ -65,6 +107,7 @@ export default function AttendancePage() {
     loading,
     deletingSessionId,
     deleteSession,
+    linkSessionToEvent,
     removeManualAttendee,
     renameSession,
     renamingSessionId,
@@ -91,6 +134,25 @@ export default function AttendancePage() {
   const [pendingCreateNewMeeting, setPendingCreateNewMeeting] = useState(false);
   const [startedAttendanceFlow, setStartedAttendanceFlow] = useState(false);
 
+  // Link-to-event modal state
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linkContext, setLinkContext] = useState<LinkContext>('draft');
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
+  const [eventCandidates, setEventCandidates] = useState<EventLinkCandidate[]>(
+    [],
+  );
+  const [selectedEventIdForLink, setSelectedEventIdForLink] = useState<
+    string | null
+  >(null);
+  const [draftLinkedEventId, setDraftLinkedEventId] = useState<string | null>(
+    null,
+  );
+  const [linkedEvent, setLinkedEvent] = useState<EventLinkCandidate | null>(
+    null,
+  );
+  const supabase = useSupabase();
+  const attendanceDb = supabase as unknown as AttendanceSupabaseClient;
+
   // ── New Meeting Modal state ──
   const [newMeetingModalOpen, setNewMeetingModalOpen] = useState(false);
   const [newMeetingModalDate, setNewMeetingModalDate] = useState(
@@ -105,32 +167,22 @@ export default function AttendancePage() {
   // ── Edit Previous Meeting Modal state ──
   const [editPreviousModalOpen, setEditPreviousModalOpen] = useState(false);
   const [editPreviousSelectedId, setEditPreviousSelectedId] = useState('');
-
-  // Inline editor state (Wix-style)
-  const [editingField, setEditingField] = useState<
-    'title' | 'subtitle' | 'date' | null
-  >(null);
   const [draftTitle, setDraftTitle] = useState('');
-  const [draftSubtitle, setDraftSubtitle] = useState('');
   const [draftDate, setDraftDate] = useState('');
 
   // Rename state for existing sessions
   const [editingMeetingName, setEditingMeetingName] = useState(false);
   const [meetingNameDraft, setMeetingNameDraft] = useState('');
 
-  // Save-flow modals (kept for existing sessions if needed)
+  // Save-flow modals
   const [meetingNameModalOpen, setMeetingNameModalOpen] = useState(false);
   const [nameMeetingChoice, setNameMeetingChoice] = useState<'no' | 'yes'>(
     'no',
   );
   const [newMeetingName, setNewMeetingName] = useState('');
-  const [forceMeetingRename, setForceMeetingRename] = useState(false);
 
   const manualInputRef = useRef<HTMLInputElement | null>(null);
   const meetingNameInputRef = useRef<HTMLInputElement | null>(null);
-  const titleInputRef = useRef<HTMLInputElement | null>(null);
-  const subtitleInputRef = useRef<HTMLInputElement | null>(null);
-  const dateInputRef = useRef<HTMLInputElement | null>(null);
   const initializedDefaultMeetingRef = useRef(false);
 
   const filteredRows = useMemo(() => {
@@ -145,27 +197,20 @@ export default function AttendancePage() {
 
   const canClearFilters =
     searchQuery.trim().length > 0 || statusFilter !== 'all';
-  const sessionStats = useMemo(
-    () => calculateSessionStats(attendanceRows),
-    [attendanceRows],
-  );
 
-  // Sync draft fields when entering new-meeting mode
   useEffect(() => {
     if (isDraftSession) {
       const today = new Date().toISOString().slice(0, 10);
-      setDraftSubtitle('');
       setDraftDate(today);
       setSelectedDate(today);
     }
-  }, [isDraftSession]);
+  }, [isDraftSession, setSelectedDate]);
 
-  // Keep selectedDate in sync with draftDate
   useEffect(() => {
     if (isDraftSession && draftDate) {
       setSelectedDate(draftDate);
     }
-  }, [draftDate, isDraftSession]);
+  }, [draftDate, isDraftSession, setSelectedDate]);
 
   useEffect(() => {
     if (initializedDefaultMeetingRef.current) return;
@@ -242,52 +287,105 @@ export default function AttendancePage() {
     });
   }, [editingMeetingName]);
 
-  // Focus inline editor inputs
+  const activeLinkedEventId = selectedSession?.event_id ?? draftLinkedEventId;
+
   useEffect(() => {
-    if (editingField === 'title') {
-      requestAnimationFrame(() => titleInputRef.current?.focus());
-    } else if (editingField === 'subtitle') {
-      requestAnimationFrame(() => subtitleInputRef.current?.focus());
-    } else if (editingField === 'date') {
-      requestAnimationFrame(() => dateInputRef.current?.focus());
+    if (!activeLinkedEventId) {
+      setLinkedEvent(null);
+      return;
     }
-  }, [editingField]);
+
+    let cancelled = false;
+
+    const loadLinkedEvent = async () => {
+      const { data, error } = await attendanceDb
+        .from('events')
+        .select('id, title, start_at, end_at, location')
+        .eq('id', activeLinkedEventId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error('Failed to load linked event', error);
+        setLinkedEvent(null);
+        return;
+      }
+
+      setLinkedEvent((data ?? null) as EventLinkCandidate | null);
+    };
+
+    void loadLinkedEvent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLinkedEventId, attendanceDb]);
+
+  const openLinkModal = (context: LinkContext) => {
+    const currentEventId =
+      selectedSession?.event_id ?? draftLinkedEventId ?? null;
+    setLinkContext(context);
+    setSelectedEventIdForLink(currentEventId);
+    setEventSearchQuery('');
+    setLinkModalOpen(true);
+  };
 
   const handleAddManualAttendee = () => {
-    const added = addManualAttendee(manualAttendeeName);
+    const trimmed = manualAttendeeName.trim();
+    const added = addManualAttendee(trimmed);
     if (!added) return;
     setManualAttendeeName('');
     setToolsOpen(true);
     requestAnimationFrame(() => manualInputRef.current?.focus());
   };
 
-  const handleSessionChange = (nextSessionId: string) => {
-    if (nextSessionId === selectedSessionId) return;
-    if (hasUnsavedChanges) {
-      setPendingSessionId(nextSessionId);
-      setConfirmLeaveOpen(true);
-      return;
-    }
-    setStartedAttendanceFlow(true);
-    setSelectedSessionId(nextSessionId);
-  };
+  const fetchEventCandidates = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const day = new Date(
+        selectedDate || new Date().toISOString().slice(0, 10),
+      );
+      const start = new Date(day);
+      start.setDate(start.getDate() - 7);
+      const end = new Date(day);
+      end.setDate(end.getDate() + 7);
 
-  // Opens the New Meeting modal (instead of jumping straight to draft mode)
+      const { data, error } = await attendanceDb
+        .from('events')
+        .select('id, title, start_at, end_at, location')
+        .eq('project_id', projectId)
+        .gte('start_at', start.toISOString())
+        .lte('start_at', end.toISOString())
+        .order('start_at', { ascending: true });
+
+      if (error) throw error;
+      setEventCandidates((data ?? []) as EventLinkCandidate[]);
+    } catch (err) {
+      console.error('Failed to load event candidates', err);
+      setEventCandidates([]);
+    }
+  }, [attendanceDb, projectId, selectedDate]);
+
+  useEffect(() => {
+    if (!linkModalOpen) return;
+    void fetchEventCandidates();
+  }, [fetchEventCandidates, linkModalOpen]);
+
   const handleNewMeeting = () => {
     if (hasUnsavedChanges) {
       setPendingCreateNewMeeting(true);
       setConfirmLeaveOpen(true);
       return;
     }
-    // Reset modal state to fresh defaults
     setNewMeetingModalDate(new Date().toISOString().slice(0, 10));
     setNewMeetingModalNameChoice('auto');
     setNewMeetingModalCustomName('');
+    setDraftLinkedEventId(null);
     setStartedAttendanceFlow(true);
     setNewMeetingModalOpen(true);
   };
 
-  // Called when the user confirms the New Meeting modal
   const handleConfirmNewMeeting = () => {
     const resolvedDate =
       newMeetingModalDate || new Date().toISOString().slice(0, 10);
@@ -298,12 +396,12 @@ export default function AttendancePage() {
         : defaultSessionTitle(resolvedDate);
 
     setNewMeetingModalOpen(false);
-
-    // Enter draft mode with the chosen values pre-filled
     setSelectedSessionId(null);
     setSelectedDate(resolvedDate);
     setDraftDate(resolvedDate);
     setDraftTitle(resolvedTitle);
+    setDraftLinkedEventId(null);
+    openLinkModal('draft');
   };
 
   const clearFilters = () => {
@@ -333,7 +431,6 @@ export default function AttendancePage() {
       return;
     }
 
-    // For draft sessions, use inline editor values
     const resolvedDate = draftDate || new Date().toISOString().slice(0, 10);
     const fallbackTitle = defaultSessionTitle(resolvedDate);
     const candidateTitle =
@@ -346,7 +443,6 @@ export default function AttendancePage() {
     );
 
     if (duplicateExists) {
-      setForceMeetingRename(true);
       setNameMeetingChoice('yes');
       setNewMeetingName(
         nextDuplicateMeetingTitle(sessions, resolvedDate, candidateTitle),
@@ -355,10 +451,16 @@ export default function AttendancePage() {
       return;
     }
 
-    void saveAttendance({ newSessionTitle: candidateTitle });
+    const saved = await saveAttendance({
+      newSessionTitle: candidateTitle,
+      newSessionEventId: draftLinkedEventId,
+    });
+
+    if (saved) {
+      setDraftLinkedEventId(null);
+    }
   };
 
-  // Old modal flow kept for edge case (duplicate title)
   const confirmMeetingNameAndSave = async () => {
     const resolvedDate = draftDate || new Date().toISOString().slice(0, 10);
     const fallbackTitle = defaultSessionTitle(resolvedDate);
@@ -374,7 +476,6 @@ export default function AttendancePage() {
     );
 
     if (duplicateExists) {
-      setForceMeetingRename(true);
       setNameMeetingChoice('yes');
       setNewMeetingName(
         nextDuplicateMeetingTitle(sessions, resolvedDate, candidateTitle),
@@ -382,9 +483,40 @@ export default function AttendancePage() {
       return;
     }
 
-    setMeetingNameModalOpen(false);
-    setForceMeetingRename(false);
-    void saveAttendance({ newSessionTitle: candidateTitle });
+    const saved = await saveAttendance({
+      newSessionTitle: candidateTitle,
+      newSessionEventId: draftLinkedEventId,
+    });
+
+    if (saved) {
+      setMeetingNameModalOpen(false);
+      setDraftLinkedEventId(null);
+    }
+  };
+
+  const handleLinkAttendanceToEvent = async () => {
+    if (!selectedEventIdForLink) return;
+
+    const selectedEvent =
+      eventCandidates.find((event) => event.id === selectedEventIdForLink) ??
+      null;
+
+    if (linkContext === 'draft') {
+      setDraftLinkedEventId(selectedEventIdForLink);
+      setLinkedEvent(selectedEvent);
+      setLinkModalOpen(false);
+      return;
+    }
+
+    if (!selectedSession) return;
+
+    const linked = await linkSessionToEvent(
+      selectedSession.id,
+      selectedEventIdForLink,
+    );
+    if (linked) {
+      setLinkModalOpen(false);
+    }
   };
 
   const handleModalPrimaryEnter = (
@@ -403,12 +535,7 @@ export default function AttendancePage() {
   const displayDate = isDraftSession
     ? draftDate
     : selectedSession?.meeting_date;
-  const displayTitle = isDraftSession
-    ? draftTitle || null
-    : selectedSession?.title || null;
 
-  // Hide the attendance workspace until the user has either selected an existing
-  // meeting OR confirmed the New Meeting modal (which puts us in draft mode).
   const requiresMeetingSelection = !startedAttendanceFlow;
 
   return (
@@ -417,13 +544,14 @@ export default function AttendancePage() {
       title="Attendance"
       description="Mark attendance for your meetings and track who showed up."
     >
+      {/* ── datalist for name autocomplete ── */}
       <datalist id="attendance-name-suggestions">
         {allKnownNames.map((name) => (
           <option key={name} value={name} />
         ))}
       </datalist>
 
-      {/* ── Landing hero: two choices ── */}
+      {/* ── Landing: choose new or edit previous ── */}
       {requiresMeetingSelection ? (
         <div className="flex min-h-[40vh] items-center justify-center py-8">
           <div className="w-full max-w-lg space-y-4">
@@ -499,7 +627,6 @@ export default function AttendancePage() {
           {/* Left: meeting identity */}
           <div className="min-w-0 flex-1 space-y-1">
             {isDraftSession ? (
-              /* ── New meeting draft: show name + date set by modal, read-only ── */
               <div className="space-y-0.5">
                 <div className="text-lg font-semibold">
                   {draftTitle || defaultSessionTitle(draftDate)}
@@ -511,9 +638,18 @@ export default function AttendancePage() {
                     (unsaved meeting)
                   </span>
                 </div>
+                {linkedEvent ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
+                      Linked to event
+                    </span>
+                    <span className="text-foreground font-medium">
+                      {linkedEvent.title}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ) : selectedSession ? (
-              /* ── Existing session header ── */
               editingMeetingName ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
@@ -597,6 +733,16 @@ export default function AttendancePage() {
                     <CalendarDays className="h-3 w-3" />
                     {formatReadableDate(selectedSession.meeting_date)}
                   </div>
+                  {linkedEvent ? (
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 font-medium text-blue-700">
+                        Linked to event
+                      </span>
+                      <span className="text-foreground font-medium">
+                        {linkedEvent.title}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               )
             ) : null}
@@ -643,6 +789,17 @@ export default function AttendancePage() {
                   ? 'Create New Meeting'
                   : 'Save Changes'}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                openLinkModal(isDraftSession ? 'draft' : 'session')
+              }
+              disabled={savingAttendance}
+            >
+              {linkedEvent ? 'Change linked event' : 'Link to event'}
+            </Button>
             {selectedSession ? (
               <Button
                 type="button"
@@ -660,7 +817,6 @@ export default function AttendancePage() {
         {/* Row 2: tools toggle */}
         <div className="border-border/70 mt-3 flex flex-col gap-3 border-t pt-3 lg:flex-row lg:items-end lg:justify-between">
           <div />
-
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -717,6 +873,17 @@ export default function AttendancePage() {
                   onClick={handleAddManualAttendee}
                 >
                   Add
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() =>
+                    openLinkModal(isDraftSession ? 'draft' : 'session')
+                  }
+                >
+                  Link to event
                 </Button>
               </div>
             </div>
@@ -930,6 +1097,111 @@ export default function AttendancePage() {
           MODALS
       ══════════════════════════════════════════════════════════ */}
 
+      {/* ── Link attendance to event modal ── */}
+      <Dialog open={linkModalOpen} onOpenChange={setLinkModalOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Link attendance to an event?</DialogTitle>
+            <DialogDescription>
+              {linkContext === 'draft'
+                ? 'Choose an event now and it will be saved with this attendance meeting.'
+                : 'Choose an event to associate with this attendance meeting.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                Search nearby events
+              </label>
+              <div className="mt-2">
+                <Input
+                  placeholder="Search events by title"
+                  value={eventSearchQuery}
+                  onChange={(e) => setEventSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                Nearby events
+              </label>
+              <div className="max-h-72 overflow-auto rounded-md border">
+                {eventCandidates.filter((event) => {
+                  const query = eventSearchQuery.trim().toLowerCase();
+                  if (!query) return true;
+                  return event.title.toLowerCase().includes(query);
+                }).length === 0 ? (
+                  <div className="text-muted-foreground p-4 text-sm">
+                    No nearby events found.
+                  </div>
+                ) : (
+                  eventCandidates
+                    .filter((event) => {
+                      const query = eventSearchQuery.trim().toLowerCase();
+                      if (!query) return true;
+                      return event.title.toLowerCase().includes(query);
+                    })
+                    .map((event) => (
+                      <button
+                        key={event.id}
+                        type="button"
+                        className={cn(
+                          'flex w-full items-start gap-3 border-b px-4 py-3 text-left transition-colors last:border-b-0',
+                          selectedEventIdForLink === event.id
+                            ? 'bg-muted/60'
+                            : 'hover:bg-muted/30',
+                        )}
+                        onClick={() => setSelectedEventIdForLink(event.id)}
+                      >
+                        <input
+                          type="radio"
+                          name="link-event"
+                          checked={selectedEventIdForLink === event.id}
+                          onChange={() => setSelectedEventIdForLink(event.id)}
+                          className="mt-1"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">
+                            {event.title}
+                          </div>
+                          <div className="text-muted-foreground text-xs">
+                            {new Date(event.start_at).toLocaleString()} ·{' '}
+                            {event.location || 'No location'}
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setLinkModalOpen(false);
+                setSelectedEventIdForLink(null);
+              }}
+            >
+              Skip linking
+            </Button>
+            <Button
+              type="button"
+              disabled={!selectedEventIdForLink}
+              onClick={() => {
+                void handleLinkAttendanceToEvent();
+              }}
+            >
+              {linkContext === 'draft' ? 'Use this event' : 'Save link'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── New Meeting Modal ── */}
       <Dialog open={newMeetingModalOpen} onOpenChange={setNewMeetingModalOpen}>
         <DialogContent
@@ -944,7 +1216,6 @@ export default function AttendancePage() {
           </DialogHeader>
 
           <div className="space-y-5 py-2">
-            {/* Date picker */}
             <div className="space-y-1.5">
               <Label htmlFor="new-meeting-date">Meeting date</Label>
               <Input
@@ -956,7 +1227,6 @@ export default function AttendancePage() {
               />
             </div>
 
-            {/* Name: auto vs custom */}
             <div className="space-y-2">
               <Label>Meeting name</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -1164,7 +1434,6 @@ export default function AttendancePage() {
                 return;
               }
               if (pendingCreateNewMeeting) {
-                // Open the new meeting modal instead of jumping directly into draft
                 setPendingCreateNewMeeting(false);
                 setNewMeetingModalDate(new Date().toISOString().slice(0, 10));
                 setNewMeetingModalNameChoice('auto');
@@ -1279,17 +1548,6 @@ export default function AttendancePage() {
         </DialogContent>
       </Dialog>
     </AttendancePageShell>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="border-border/70 bg-card rounded-2xl border px-4 py-3 shadow-sm">
-      <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-        {label}
-      </div>
-      <div className="text-foreground mt-2 text-2xl font-semibold">{value}</div>
-    </div>
   );
 }
 
