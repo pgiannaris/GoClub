@@ -247,7 +247,9 @@ function getRequestOrigin(headersStore: Headers) {
     headersStore.get('host')?.trim();
 
   if (!host) {
-    return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+    return (
+      process.env.NEXT_PUBLIC_SITE_URL ?? 'https://go-club-web.vercel.app/'
+    );
   }
 
   const protocol =

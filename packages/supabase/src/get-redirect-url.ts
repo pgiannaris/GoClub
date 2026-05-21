@@ -16,5 +16,5 @@ function getBaseOrigin() {
     return siteUrl.endsWith('/') ? siteUrl : `${siteUrl}/`;
   }
 
-  return 'http://localhost:3000/';
+  return 'https://go-club-web.vercel.app/';
 }

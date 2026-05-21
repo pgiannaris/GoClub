@@ -161,7 +161,10 @@ function getRequestOrigin(headersStore: Headers) {
   const host =
     headersStore.get('x-forwarded-host')?.split(',')[0]?.trim() ||
     headersStore.get('host')?.trim();
-  if (!host) return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  if (!host)
+    return (
+      process.env.NEXT_PUBLIC_SITE_URL ?? 'https://go-club-web.vercel.app/'
+    );
   const protocol =
     headersStore.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
     (host.includes('localhost') ? 'http' : 'https');
