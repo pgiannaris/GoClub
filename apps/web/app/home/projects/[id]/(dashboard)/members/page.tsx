@@ -79,6 +79,8 @@ type SiteUserRecord = {
   updated_at: string | null;
 };
 
+type StudentAddMode = 'manual' | 'website';
+
 export default function MembersPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
@@ -103,6 +105,11 @@ export default function MembersPage() {
   const [addingAccountId, setAddingAccountId] = useState<string | null>(null);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
+  const [studentAddMode, setStudentAddMode] = useState<StudentAddMode>('manual');
+  const [manualStudentName, setManualStudentName] = useState('');
+  const [manualStudentEmail, setManualStudentEmail] = useState('');
+  const [creatingManualStudent, setCreatingManualStudent] = useState(false);
+  const [copyingInviteLink, setCopyingInviteLink] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentProfile | null>(
     null,
   );
@@ -259,6 +266,13 @@ export default function MembersPage() {
       );
     });
   }, [studentSearch, websiteAccounts]);
+
+  const inviteSiteUrl = useMemo(() => {
+    if (!projectId) return '';
+    if (typeof window === 'undefined') return '';
+
+    return `${window.location.origin}/site/${encodeURIComponent(projectId)}`;
+  }, [projectId]);
 
   const siteUsersSorted = useMemo(
     () =>
@@ -447,6 +461,78 @@ export default function MembersPage() {
       toast.error(message);
     } finally {
       setAddingAccountId(null);
+    }
+  };
+
+  const addManualStudent = async () => {
+    if (!projectId) {
+      toast.error('Missing project id');
+      return;
+    }
+
+    const fullName = manualStudentName.trim();
+    const email = manualStudentEmail.trim().toLowerCase();
+
+    if (!fullName) {
+      toast.error('Enter the student name');
+      return;
+    }
+
+    setCreatingManualStudent(true);
+
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/members/students`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            full_name: fullName,
+            email: email || null,
+          }),
+        },
+      );
+
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        student?: StudentProfile;
+      };
+
+      if (!response.ok || !payload.student) {
+        throw new Error(payload.error || 'Failed to add manual student');
+      }
+
+      setStudents((prev) => upsertStudent(prev, payload.student as StudentProfile));
+      setManualStudentName('');
+      setManualStudentEmail('');
+      setStudentModalOpen(false);
+      toast.success(`${fullName} added to the student roster`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to add manual student';
+      toast.error(message);
+    } finally {
+      setCreatingManualStudent(false);
+    }
+  };
+
+  const copyInviteLink = async () => {
+    if (!inviteSiteUrl) {
+      toast.error('Unable to generate invite link');
+      return;
+    }
+
+    try {
+      setCopyingInviteLink(true);
+      await navigator.clipboard.writeText(inviteSiteUrl);
+      toast.success('Invite link copied');
+    } catch {
+      toast.error('Failed to copy invite link');
+    } finally {
+      setCopyingInviteLink(false);
     }
   };
 
@@ -642,7 +728,12 @@ export default function MembersPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium">{student.full_name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{student.full_name}</p>
+                        <Badge className={studentOriginBadgeClass(student)}>
+                          {studentOriginLabel(student)}
+                        </Badge>
+                      </div>
                       <p className="text-muted-foreground text-sm">
                         {student.email || 'No email on file'}
                       </p>
@@ -820,26 +911,134 @@ export default function MembersPage() {
         open={studentModalOpen}
         onOpenChange={(open) => {
           setStudentModalOpen(open);
-          if (!open) setStudentSearch('');
+          if (!open) {
+            setStudentSearch('');
+            setStudentAddMode('manual');
+            setManualStudentName('');
+            setManualStudentEmail('');
+          }
         }}
       >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add Students</DialogTitle>
             <DialogDescription>
-              Choose users who already created a GoClub account and add them to
-              the student roster.
+              Add students manually, or send your public site link so they can
+              register themselves.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <Input
-              value={studentSearch}
-              onChange={(event) => setStudentSearch(event.target.value)}
-              placeholder="Search website users..."
-            />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setStudentAddMode('manual')}
+                className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  studentAddMode === 'manual'
+                    ? 'border-primary bg-primary/5'
+                    : 'hover:bg-muted/40'
+                }`}
+              >
+                <div className="font-medium">Manual Student</div>
+                <div className="text-muted-foreground text-xs">
+                  Add immediately without account signup.
+                </div>
+              </button>
 
-            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+              <button
+                type="button"
+                onClick={() => setStudentAddMode('website')}
+                className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  studentAddMode === 'website'
+                    ? 'border-primary bg-primary/5'
+                    : 'hover:bg-muted/40'
+                }`}
+              >
+                <div className="font-medium">Website Registration</div>
+                <div className="text-muted-foreground text-xs">
+                  Share the public page and add signups to roster.
+                </div>
+              </button>
+            </div>
+
+            {studentAddMode === 'manual' ? (
+              <div className="space-y-3 rounded-md border p-4">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="manual-student-name"
+                    className="text-muted-foreground text-xs"
+                  >
+                    Student Name
+                  </label>
+                  <Input
+                    id="manual-student-name"
+                    value={manualStudentName}
+                    onChange={(event) => setManualStudentName(event.target.value)}
+                    placeholder="Jane Doe"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="manual-student-email"
+                    className="text-muted-foreground text-xs"
+                  >
+                    Email (optional)
+                  </label>
+                  <Input
+                    id="manual-student-email"
+                    type="email"
+                    value={manualStudentEmail}
+                    onChange={(event) => setManualStudentEmail(event.target.value)}
+                    placeholder="student@example.com"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void addManualStudent();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => void addManualStudent()}
+                    disabled={creatingManualStudent}
+                  >
+                    {creatingManualStudent ? 'Adding...' : 'Add Manual Student'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 rounded-md border p-4">
+                  <div className="text-sm font-medium">
+                    Public Site Invite Link
+                  </div>
+                  <div className="bg-muted/40 rounded border px-3 py-2 text-xs break-all">
+                    {inviteSiteUrl || 'Loading invite link...'}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void copyInviteLink()}
+                      disabled={copyingInviteLink || !inviteSiteUrl}
+                    >
+                      {copyingInviteLink ? 'Copying...' : 'Copy Link'}
+                    </Button>
+                    <p className="text-muted-foreground text-xs">
+                      Students sign up here, then you can add them to roster.
+                    </p>
+                  </div>
+                </div>
+
+                <Input
+                  value={studentSearch}
+                  onChange={(event) => setStudentSearch(event.target.value)}
+                  placeholder="Search website users..."
+                />
+
+                <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
               {loadingWebsiteAccounts &&
                 Array.from({ length: 4 }).map((_, index) => (
                   <div
@@ -850,16 +1049,16 @@ export default function MembersPage() {
                   </div>
                 ))}
 
-              {!loadingWebsiteAccounts && siteUsersSorted.length === 0 && (
+              {!loadingWebsiteAccounts && filteredWebsiteAccounts.length === 0 && (
                 <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
-                  No website users are available.
+                  No website users match your search.
                 </div>
               )}
 
               {!loadingWebsiteAccounts &&
-                siteUsersSorted.map((siteUser) => (
+                filteredWebsiteAccounts.map((siteUser) => (
                   <div
-                    key={siteUser.accountId}
+                    key={siteUser.id}
                     className="flex flex-wrap items-start justify-between gap-3 rounded-md border p-4"
                   >
                     <div>
@@ -869,24 +1068,19 @@ export default function MembersPage() {
                       </p>
                     </div>
 
-                    {websiteAccountIds.has(siteUser.accountId) ? (
+                    {websiteAccountIds.has(siteUser.id) ? (
                       <Button
                         type="button"
-                        variant={
-                          siteUser.intent === 'student-member-requested'
-                            ? 'default'
-                            : 'outline'
-                        }
                         onClick={() =>
                           void addWebsiteAccountToRoster({
-                            id: siteUser.accountId,
+                            id: siteUser.id,
                             name: siteUser.name,
                             email: siteUser.email,
                           })
                         }
-                        disabled={addingAccountId === siteUser.accountId}
+                        disabled={addingAccountId === siteUser.id}
                       >
-                        {addingAccountId === siteUser.accountId
+                        {addingAccountId === siteUser.id
                           ? 'Adding...'
                           : 'Add to Student Roster'}
                       </Button>
@@ -898,6 +1092,8 @@ export default function MembersPage() {
                   </div>
                 ))}
             </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1002,7 +1198,12 @@ export default function MembersPage() {
           {selectedStudent && (
             <div className="space-y-4">
               <div className="rounded-md border p-4">
-                <div className="font-medium">{selectedStudent.full_name}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium">{selectedStudent.full_name}</div>
+                  <Badge className={studentOriginBadgeClass(selectedStudent)}>
+                    {studentOriginLabel(selectedStudent)}
+                  </Badge>
+                </div>
                 <div className="text-muted-foreground text-sm">
                   {selectedStudent.email || 'No email on file'}
                 </div>
@@ -1084,6 +1285,13 @@ function AccessCard({
           <p className="text-muted-foreground text-sm">
             {profile?.email || member.account_id}
           </p>
+          {profile ? (
+            <p className="mt-1">
+              <Badge className={studentOriginBadgeClass(profile)}>
+                {studentOriginLabel(profile)}
+              </Badge>
+            </p>
+          ) : null}
           <p className="text-muted-foreground mt-1 text-xs">
             {accessSummary(role)}
           </p>
@@ -1210,6 +1418,18 @@ function siteUserSortIndex(intent: SiteUserRecord['intent']) {
   if (intent === 'student-member') return 1;
   if (intent === 'administrator') return 2;
   return 3;
+}
+
+function studentOriginLabel(student: StudentProfile) {
+  return student.account_id ? 'Registered' : 'Manual';
+}
+
+function studentOriginBadgeClass(student: StudentProfile) {
+  if (student.account_id) {
+    return 'bg-blue-100 text-blue-800 hover:bg-blue-100';
+  }
+
+  return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
 }
 
 function upsertProjectMember(
