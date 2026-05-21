@@ -305,7 +305,18 @@ export function useAttendanceWorkspace(
     const match = sessions.find(
       (session) => session.meeting_date === selectedDate,
     );
-    setSelectedSessionId(match?.id ?? null);
+    setSelectedSessionId((current) => {
+      if (current) {
+        const currentSession = sessions.find(
+          (session) => session.id === current,
+        );
+        if (currentSession?.meeting_date === selectedDate) {
+          return current;
+        }
+      }
+
+      return match?.id ?? null;
+    });
   }, [selectedDate, sessions]);
 
   const resetDraftFromSelectedEntries = useCallback(() => {

@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from '@kit/ui/dialog';
 import { Input } from '@kit/ui/input';
+import { Upload } from 'lucide-react';
 
 type ProjectMemberRole = 'owner' | 'admin' | 'member' | 'viewer' | string;
 
@@ -105,16 +106,20 @@ export default function MembersPage() {
   const [addingAccountId, setAddingAccountId] = useState<string | null>(null);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
-  const [studentAddMode, setStudentAddMode] = useState<StudentAddMode>('manual');
+  const [studentAddMode, setStudentAddMode] =
+    useState<StudentAddMode>('manual');
   const [manualStudentName, setManualStudentName] = useState('');
   const [manualStudentEmail, setManualStudentEmail] = useState('');
   const [creatingManualStudent, setCreatingManualStudent] = useState(false);
+  const [importingCsvStudents, setImportingCsvStudents] = useState(false);
+  const [csvImportStatus, setCsvImportStatus] = useState<string | null>(null);
   const [copyingInviteLink, setCopyingInviteLink] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentProfile | null>(
     null,
   );
   const [studentDetailModalOpen, setStudentDetailModalOpen] = useState(false);
   const [studentCustomName, setStudentCustomName] = useState('');
+  const [studentCustomEmail, setStudentCustomEmail] = useState('');
   const [savingStudentName, setSavingStudentName] = useState(false);
   const [removingStudentId, setRemovingStudentId] = useState<string | null>(
     null,
@@ -255,18 +260,6 @@ export default function MembersPage() {
     [students],
   );
 
-  const filteredWebsiteAccounts = useMemo(() => {
-    const query = studentSearch.trim().toLowerCase();
-    if (!query) return websiteAccounts;
-
-    return websiteAccounts.filter((account) => {
-      return (
-        account.name.toLowerCase().includes(query) ||
-        (account.email ?? '').toLowerCase().includes(query)
-      );
-    });
-  }, [studentSearch, websiteAccounts]);
-
   const inviteSiteUrl = useMemo(() => {
     if (!projectId) return '';
     if (typeof window === 'undefined') return '';
@@ -274,17 +267,41 @@ export default function MembersPage() {
     return `${window.location.origin}/site/${encodeURIComponent(projectId)}`;
   }, [projectId]);
 
+  const rosterAccountIds = useMemo(
+    () =>
+      new Set(
+        students
+          .map((student) => student.account_id)
+          .filter((accountId): accountId is string => Boolean(accountId)),
+      ),
+    [students],
+  );
+
   const siteUsersSorted = useMemo(
     () =>
-      [...siteUsers].sort(
-        (a, b) =>
-          siteUserSortIndex(a.intent) - siteUserSortIndex(b.intent) ||
-          sortNullableDateDesc(a.updated_at, b.updated_at) ||
-          a.name.localeCompare(b.name) ||
-          (a.email ?? '').localeCompare(b.email ?? ''),
-      ),
-    [siteUsers],
+      [...siteUsers]
+        .filter((siteUser) => rosterAccountIds.has(siteUser.accountId))
+        .sort(
+          (a, b) =>
+            siteUserSortIndex(a.intent) - siteUserSortIndex(b.intent) ||
+            sortNullableDateDesc(a.updated_at, b.updated_at) ||
+            a.name.localeCompare(b.name) ||
+            (a.email ?? '').localeCompare(b.email ?? ''),
+        ),
+    [rosterAccountIds, siteUsers],
   );
+
+  const filteredSiteUsersSorted = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return siteUsersSorted;
+
+    return siteUsersSorted.filter((siteUser) => {
+      return (
+        siteUser.name.toLowerCase().includes(query) ||
+        (siteUser.email ?? '').toLowerCase().includes(query)
+      );
+    });
+  }, [siteUsersSorted, studentSearch]);
 
   const canManageRoster = useMemo(() => {
     if (!currentAccountId) return false;
@@ -505,7 +522,9 @@ export default function MembersPage() {
         throw new Error(payload.error || 'Failed to add manual student');
       }
 
-      setStudents((prev) => upsertStudent(prev, payload.student as StudentProfile));
+      setStudents((prev) =>
+        upsertStudent(prev, payload.student as StudentProfile),
+      );
       setManualStudentName('');
       setManualStudentEmail('');
       setStudentModalOpen(false);
@@ -516,6 +535,111 @@ export default function MembersPage() {
       toast.error(message);
     } finally {
       setCreatingManualStudent(false);
+    }
+  };
+
+  const parseStudentCsv = (text: string) => {
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length === 0) return [] as Array<{ full_name: string; email: string | null }>;
+
+    const splitRow = (row: string) => row.split(',').map((cell) => cell.trim().replace(/^"(.*)"$/, '$1'));
+    const header = splitRow(lines[0]!);
+    const lowerHeader = header.map((h) => h.toLowerCase());
+
+    const nameIdx = lowerHeader.findIndex((h) => h === 'name' || h === 'full_name' || h === 'full name');
+    const emailIdx = lowerHeader.findIndex((h) => h === 'email' || h === 'email_address' || h === 'email address');
+    const hasHeader = nameIdx >= 0 || emailIdx >= 0;
+
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    return dataLines
+      .map((line) => {
+        const cols = splitRow(line);
+        const full_name = (nameIdx >= 0 ? cols[nameIdx] : cols[0])?.trim() ?? '';
+        const emailRaw = (emailIdx >= 0 ? cols[emailIdx] : cols[1])?.trim() ?? '';
+        return {
+          full_name,
+          email: emailRaw ? emailRaw.toLowerCase() : null,
+        };
+      })
+      .filter((row) => row.full_name.length > 0);
+  };
+
+  const importStudentsFromCsv = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file || !projectId) return;
+
+    setImportingCsvStudents(true);
+    setCsvImportStatus(null);
+
+    try {
+      const text = await file.text();
+      const parsed = parseStudentCsv(text);
+
+      if (parsed.length === 0) {
+        setCsvImportStatus('No valid student names found in CSV.');
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const row of parsed) {
+        try {
+          const response = await fetch(
+            `/api/projects/${encodeURIComponent(projectId)}/members/students`,
+            {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({
+                full_name: row.full_name,
+                email: row.email,
+              }),
+            },
+          );
+
+          const payload = (await response.json().catch(() => ({}))) as {
+            student?: StudentProfile;
+          };
+
+          if (!response.ok || !payload.student) {
+            failCount += 1;
+            continue;
+          }
+
+          successCount += 1;
+          setStudents((prev) => upsertStudent(prev, payload.student as StudentProfile));
+        } catch {
+          failCount += 1;
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Added ${successCount} student${successCount === 1 ? '' : 's'} from CSV`);
+      }
+
+      if (failCount > 0) {
+        setCsvImportStatus(
+          `Imported with partial failures: ${successCount} added, ${failCount} failed.`,
+        );
+      } else {
+        setCsvImportStatus(`CSV import complete: ${successCount} added.`);
+      }
+    } catch (error) {
+      console.error(error);
+      setCsvImportStatus('Failed to read CSV file.');
+    } finally {
+      setImportingCsvStudents(false);
+      event.target.value = '';
     }
   };
 
@@ -539,13 +663,18 @@ export default function MembersPage() {
   const openStudentDetails = (student: StudentProfile) => {
     setSelectedStudent(student);
     setStudentCustomName(student.full_name);
+    setStudentCustomEmail(student.email ?? '');
     setStudentDetailModalOpen(true);
   };
 
-  const updateStudentName = async () => {
+  const updateStudentDetails = async () => {
     if (!projectId || !selectedStudent) return;
 
     const nextName = studentCustomName.trim();
+    const nextEmail = selectedStudent.account_id
+      ? selectedStudent.email
+      : studentCustomEmail.trim().toLowerCase() || null;
+
     if (!nextName) {
       toast.error('Enter a student name');
       return;
@@ -564,6 +693,7 @@ export default function MembersPage() {
           },
           body: JSON.stringify({
             full_name: nextName,
+            email: nextEmail,
           }),
         },
       );
@@ -581,12 +711,11 @@ export default function MembersPage() {
       setStudents((prev) => upsertStudent(prev, updatedStudent));
       setSelectedStudent(updatedStudent);
       setStudentCustomName(updatedStudent.full_name);
-      toast.success('Student name updated');
+      setStudentCustomEmail(updatedStudent.email ?? '');
+      toast.success('Student details updated');
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to update student name';
+        error instanceof Error ? error.message : 'Failed to update student';
       toast.error(message);
     } finally {
       setSavingStudentName(false);
@@ -849,8 +978,7 @@ export default function MembersPage() {
 
           {!loadingWebsiteAccounts && siteUsersSorted.length === 0 && (
             <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
-              No signed-in website users have requested roster access or marked
-              themselves as visitors yet.
+              No roster-linked website users found yet.
             </div>
           )}
 
@@ -973,7 +1101,9 @@ export default function MembersPage() {
                   <Input
                     id="manual-student-name"
                     value={manualStudentName}
-                    onChange={(event) => setManualStudentName(event.target.value)}
+                    onChange={(event) =>
+                      setManualStudentName(event.target.value)
+                    }
                     placeholder="Jane Doe"
                   />
                 </div>
@@ -988,7 +1118,9 @@ export default function MembersPage() {
                     id="manual-student-email"
                     type="email"
                     value={manualStudentEmail}
-                    onChange={(event) => setManualStudentEmail(event.target.value)}
+                    onChange={(event) =>
+                      setManualStudentEmail(event.target.value)
+                    }
                     placeholder="student@example.com"
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
@@ -1006,6 +1138,39 @@ export default function MembersPage() {
                   >
                     {creatingManualStudent ? 'Adding...' : 'Add Manual Student'}
                   </Button>
+                </div>
+
+                <div className="border-border/70 space-y-2 border-t pt-3">
+                  <p className="text-muted-foreground text-xs">
+                    Or upload a CSV with `name`/`full_name` and optional `email` columns.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label>
+                      <input
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={(event) => void importStudentsFromCsv(event)}
+                        disabled={importingCsvStudents}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={importingCsvStudents}
+                        asChild
+                      >
+                        <span>
+                          <Upload className="mr-2 h-4 w-4" />
+                          {importingCsvStudents ? 'Importing...' : 'Upload CSV'}
+                        </span>
+                      </Button>
+                    </label>
+                    {csvImportStatus ? (
+                      <span className="text-muted-foreground text-xs">
+                        {csvImportStatus}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1039,59 +1204,60 @@ export default function MembersPage() {
                 />
 
                 <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
-              {loadingWebsiteAccounts &&
-                Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={`student-modal-loading-${index}`}
-                    className="rounded-md border p-4"
-                  >
-                    <div className="bg-muted/60 h-4 w-48 animate-pulse rounded" />
-                  </div>
-                ))}
-
-              {!loadingWebsiteAccounts && filteredWebsiteAccounts.length === 0 && (
-                <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
-                  No website users match your search.
-                </div>
-              )}
-
-              {!loadingWebsiteAccounts &&
-                filteredWebsiteAccounts.map((siteUser) => (
-                  <div
-                    key={siteUser.id}
-                    className="flex flex-wrap items-start justify-between gap-3 rounded-md border p-4"
-                  >
-                    <div>
-                      <p className="font-medium">{siteUser.name}</p>
-                      <p className="text-muted-foreground text-sm">
-                        {siteUser.email || 'No email on file'}
-                      </p>
-                    </div>
-
-                    {websiteAccountIds.has(siteUser.id) ? (
-                      <Button
-                        type="button"
-                        onClick={() =>
-                          void addWebsiteAccountToRoster({
-                            id: siteUser.id,
-                            name: siteUser.name,
-                            email: siteUser.email,
-                          })
-                        }
-                        disabled={addingAccountId === siteUser.id}
+                  {loadingWebsiteAccounts &&
+                    Array.from({ length: 4 }).map((_, index) => (
+                      <div
+                        key={`student-modal-loading-${index}`}
+                        className="rounded-md border p-4"
                       >
-                        {addingAccountId === siteUser.id
-                          ? 'Adding...'
-                          : 'Add to Student Roster'}
-                      </Button>
-                    ) : (
-                      <Button type="button" variant="outline" disabled>
-                        Not eligible
-                      </Button>
+                        <div className="bg-muted/60 h-4 w-48 animate-pulse rounded" />
+                      </div>
+                    ))}
+
+                  {!loadingWebsiteAccounts &&
+                    filteredSiteUsersSorted.length === 0 && (
+                      <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
+                        No website users match your search.
+                      </div>
                     )}
-                  </div>
-                ))}
-            </div>
+
+                  {!loadingWebsiteAccounts &&
+                    filteredSiteUsersSorted.map((siteUser) => (
+                      <div
+                        key={siteUser.accountId}
+                        className="flex flex-wrap items-start justify-between gap-3 rounded-md border p-4"
+                      >
+                        <div>
+                          <p className="font-medium">{siteUser.name}</p>
+                          <p className="text-muted-foreground text-sm">
+                            {siteUser.email || 'No email on file'}
+                          </p>
+                        </div>
+
+                        {websiteAccountIds.has(siteUser.accountId) ? (
+                          <Button
+                            type="button"
+                            onClick={() =>
+                              void addWebsiteAccountToRoster({
+                                id: siteUser.accountId,
+                                name: siteUser.name,
+                                email: siteUser.email,
+                              })
+                            }
+                            disabled={addingAccountId === siteUser.accountId}
+                          >
+                            {addingAccountId === siteUser.accountId
+                              ? 'Adding...'
+                              : 'Add to Student Roster'}
+                          </Button>
+                        ) : (
+                          <Button type="button" variant="outline" disabled>
+                            Not eligible
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                </div>
               </>
             )}
           </div>
@@ -1227,11 +1393,43 @@ export default function MembersPage() {
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault();
-                      void updateStudentName();
+                      void updateStudentDetails();
                     }
                   }}
                   disabled={!canManageRoster}
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="student-custom-email"
+                  className="text-muted-foreground text-xs"
+                >
+                  Email
+                </label>
+                <Input
+                  id="student-custom-email"
+                  type="email"
+                  value={studentCustomEmail}
+                  placeholder="student@example.com"
+                  onChange={(event) =>
+                    setStudentCustomEmail(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void updateStudentDetails();
+                    }
+                  }}
+                  disabled={
+                    !canManageRoster || Boolean(selectedStudent.account_id)
+                  }
+                />
+                {selectedStudent.account_id ? (
+                  <p className="text-muted-foreground text-xs">
+                    Registered students use their linked account email.
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1250,10 +1448,10 @@ export default function MembersPage() {
 
                 <Button
                   type="button"
-                  onClick={() => void updateStudentName()}
+                  onClick={() => void updateStudentDetails()}
                   disabled={!canManageRoster || savingStudentName}
                 >
-                  {savingStudentName ? 'Saving...' : 'Save Name'}
+                  {savingStudentName ? 'Saving...' : 'Save Changes'}
                 </Button>
               </div>
             </div>
@@ -1430,20 +1628,6 @@ function studentOriginBadgeClass(student: StudentProfile) {
   }
 
   return 'bg-amber-100 text-amber-800 hover:bg-amber-100';
-}
-
-function upsertProjectMember(
-  current: ProjectMember[],
-  nextMember: ProjectMember,
-) {
-  const index = current.findIndex(
-    (item) => item.account_id === nextMember.account_id,
-  );
-  if (index < 0) return [nextMember, ...current];
-
-  const next = [...current];
-  next[index] = { ...next[index], ...nextMember };
-  return next;
 }
 
 function upsertProjectInvitation(

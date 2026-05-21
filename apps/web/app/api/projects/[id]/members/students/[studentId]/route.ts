@@ -19,19 +19,72 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400 },
+    );
   }
 
   const fullName = parseFullName(body);
   if (!fullName) {
-    return NextResponse.json({ error: 'Valid student name is required' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Valid student name is required' },
+      { status: 400 },
+    );
   }
 
+  const email = parseEmail(body);
+
   const { adminClient } = authorization;
+  const { data: student, error: loadError } = await (adminClient as any)
+    .from('member_profiles')
+    .select('id, project_id, account_id, full_name, email, role, joined_at')
+    .eq('id', studentId)
+    .eq('project_id', projectId)
+    .maybeSingle();
+
+  if (loadError || !student) {
+    return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+  }
+
+  if (student.account_id && email !== null && email !== student.email) {
+    return NextResponse.json(
+      { error: 'Email can only be changed for manual students' },
+      { status: 400 },
+    );
+  }
+
+  if (!student.account_id && email) {
+    const { data: existingByEmail, error: existingByEmailError } = await (
+      adminClient as any
+    )
+      .from('member_profiles')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('email', email)
+      .neq('id', studentId)
+      .maybeSingle();
+
+    if (existingByEmailError) {
+      return NextResponse.json(
+        { error: 'Failed to validate student email' },
+        { status: 500 },
+      );
+    }
+
+    if (existingByEmail?.id) {
+      return NextResponse.json(
+        { error: 'A student with this email already exists in the roster' },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data, error } = await (adminClient as any)
     .from('member_profiles')
     .update({
       full_name: fullName,
+      ...(student.account_id ? {} : { email }),
     })
     .eq('id', studentId)
     .eq('project_id', projectId)
@@ -39,7 +92,10 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message || 'Failed to update student' }, { status: 400 });
+    return NextResponse.json(
+      { error: error?.message || 'Failed to update student' },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ student: data }, { status: 200 });
@@ -72,7 +128,10 @@ export async function DELETE(_request: Request, context: ProjectRouteContext) {
     .eq('project_id', projectId);
 
   if (error) {
-    return NextResponse.json({ error: error.message || 'Failed to remove student' }, { status: 400 });
+    return NextResponse.json(
+      { error: error.message || 'Failed to remove student' },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ student }, { status: 200 });
@@ -101,7 +160,10 @@ async function authorizeRosterManager(projectId: string) {
 
   if (projectError || !project) {
     return {
-      response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
+      response: NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 },
+      ),
     };
   }
 
@@ -138,4 +200,17 @@ function parseFullName(body: unknown) {
   if (typeof raw !== 'string') return '';
 
   return raw.trim();
+}
+
+function parseEmail(body: unknown) {
+  if (!body || typeof body !== 'object') return null;
+
+  const raw = (body as { email?: unknown }).email;
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'string') return null;
+
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) return null;
+
+  return normalized;
 }

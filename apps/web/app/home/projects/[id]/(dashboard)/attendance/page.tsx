@@ -8,9 +8,11 @@ import { useParams, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   CalendarDays,
+  FileUp,
   Pencil,
   Plus,
   Search,
+  Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react';
@@ -36,6 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@kit/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@kit/ui/table';
 import { cn } from '@kit/ui/utils';
 
 import { DatePickerField } from '../_components/date-time-picker-field';
@@ -127,6 +137,7 @@ export default function AttendancePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [manualAttendeeName, setManualAttendeeName] = useState('');
+  const [csvImportMessage, setCsvImportMessage] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
@@ -134,6 +145,8 @@ export default function AttendancePage() {
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [pendingCreateNewMeeting, setPendingCreateNewMeeting] = useState(false);
   const [pendingReturnToSelection, setPendingReturnToSelection] =
+    useState(false);
+  const [pendingStartAfterLinkPrompt, setPendingStartAfterLinkPrompt] =
     useState(false);
   const [startedAttendanceFlow, setStartedAttendanceFlow] = useState(() =>
     Boolean(requestedSessionId),
@@ -187,6 +200,7 @@ export default function AttendancePage() {
   const [newMeetingName, setNewMeetingName] = useState('');
 
   const manualInputRef = useRef<HTMLInputElement | null>(null);
+  const csvInputRef = useRef<HTMLInputElement | null>(null);
   const meetingNameInputRef = useRef<HTMLInputElement | null>(null);
   const initializedDefaultMeetingRef = useRef(false);
 
@@ -374,6 +388,7 @@ export default function AttendancePage() {
     setSearchQuery('');
     setStatusFilter('all');
     setManualAttendeeName('');
+    setCsvImportMessage(null);
     setLinkedEvent(null);
     setLinkModalOpen(false);
     setNewMeetingModalOpen(false);
@@ -385,6 +400,7 @@ export default function AttendancePage() {
     setPendingSessionId(null);
     setPendingCreateNewMeeting(false);
     setPendingReturnToSelection(false);
+    setPendingStartAfterLinkPrompt(false);
     setSelectedEventIdForLink(null);
     setEventSearchQuery('');
   };
@@ -396,6 +412,68 @@ export default function AttendancePage() {
     setManualAttendeeName('');
     setToolsOpen(true);
     requestAnimationFrame(() => manualInputRef.current?.focus());
+  };
+
+  const parseCsvNames = (text: string) => {
+    const rows = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (rows.length === 0) return [];
+
+    const stripQuotes = (value: string) =>
+      value.replace(/^"(.*)"$/, '$1').trim();
+
+    const firstRowCells = rows[0]!.split(',').map((cell) => stripQuotes(cell));
+    const nameColumnIndex = firstRowCells.findIndex(
+      (cell) => cell.toLowerCase() === 'name' || cell.toLowerCase() === 'full_name',
+    );
+
+    if (nameColumnIndex >= 0) {
+      return rows
+        .slice(1)
+        .map((row) => row.split(',')[nameColumnIndex] ?? '')
+        .map((value) => stripQuotes(value))
+        .filter((value) => value.length > 0);
+    }
+
+    return rows
+      .map((row) => stripQuotes(row.split(',')[0] ?? ''))
+      .filter((value) => value.length > 0);
+  };
+
+  const handleCsvImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const candidateNames = parseCsvNames(content);
+
+      if (candidateNames.length === 0) {
+        setCsvImportMessage('No names found in CSV.');
+        event.target.value = '';
+        return;
+      }
+
+      let addedCount = 0;
+      candidateNames.forEach((name) => {
+        if (addManualAttendee(name.trim())) addedCount += 1;
+      });
+
+      setToolsOpen(true);
+      setCsvImportMessage(
+        addedCount === 0
+          ? 'No new attendees added (names may already exist).'
+          : `Added ${addedCount} attendee${addedCount === 1 ? '' : 's'} from CSV.`,
+      );
+    } catch (error) {
+      console.error('Failed to import CSV attendees', error);
+      setCsvImportMessage('Could not read CSV file.');
+    } finally {
+      event.target.value = '';
+    }
   };
 
   const fetchEventCandidates = useCallback(async () => {
@@ -440,7 +518,6 @@ export default function AttendancePage() {
     setNewMeetingModalNameChoice('auto');
     setNewMeetingModalCustomName('');
     setDraftLinkedEventId(null);
-    setStartedAttendanceFlow(true);
     setNewMeetingModalOpen(true);
   };
 
@@ -459,6 +536,8 @@ export default function AttendancePage() {
     setDraftDate(resolvedDate);
     setDraftTitle(resolvedTitle);
     setDraftLinkedEventId(null);
+    setLinkedEvent(null);
+    setPendingStartAfterLinkPrompt(true);
     openLinkModal('draft');
   };
 
@@ -523,9 +602,7 @@ export default function AttendancePage() {
     const resolvedDate = draftDate || new Date().toISOString().slice(0, 10);
     const fallbackTitle = defaultSessionTitle(resolvedDate);
     const candidateTitle =
-      nameMeetingChoice === 'yes' && newMeetingName.trim().length > 0
-        ? newMeetingName.trim()
-        : fallbackTitle;
+      newMeetingName.trim().length > 0 ? newMeetingName.trim() : fallbackTitle;
 
     const duplicateExists = sessions.some(
       (session) =>
@@ -563,6 +640,10 @@ export default function AttendancePage() {
       setDraftLinkedEventId(selectedEventIdForLink);
       setLinkedEvent(selectedEvent);
       setLinkModalOpen(false);
+      if (pendingStartAfterLinkPrompt) {
+        setStartedAttendanceFlow(true);
+        setPendingStartAfterLinkPrompt(false);
+      }
       return;
     }
 
@@ -593,6 +674,7 @@ export default function AttendancePage() {
   const displayDate = isDraftSession
     ? draftDate
     : selectedSession?.meeting_date;
+  const linkTargetDate = (displayDate || selectedDate || '').slice(0, 10);
 
   const requiresMeetingSelection = !startedAttendanceFlow;
 
@@ -612,7 +694,7 @@ export default function AttendancePage() {
       {/* ── Landing: choose new or edit previous ── */}
       {requiresMeetingSelection ? (
         <div className="flex min-h-[40vh] items-center justify-center py-8">
-          <div className="w-full max-w-lg space-y-4">
+          <div className="w-full max-w-6xl space-y-4">
             <div className="mb-6 space-y-1 text-center">
               <h2 className="text-xl font-semibold">
                 What would you like to do?
@@ -622,15 +704,15 @@ export default function AttendancePage() {
               </p>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="mx-auto grid w-full max-w-4xl gap-5 sm:grid-cols-2">
               {/* New meeting button */}
               <button
                 type="button"
                 onClick={handleNewMeeting}
-                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex aspect-square w-full flex-col items-start justify-between gap-6 rounded-2xl border p-10 text-left transition-all"
+                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex min-h-[220px] w-full flex-row items-center gap-6 rounded-2xl border p-8 text-left transition-all"
               >
-                <div className="bg-primary/10 text-primary flex h-16 w-16 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
-                  <Plus className="h-8 w-8" />
+                <div className="bg-primary/10 text-primary flex h-20 w-20 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
+                  <Plus className="h-10 w-10" />
                 </div>
                 <div className="space-y-1">
                   <div className="text-foreground text-2xl font-semibold">
@@ -647,15 +729,14 @@ export default function AttendancePage() {
               <button
                 type="button"
                 onClick={() => {
-                  setStartedAttendanceFlow(true);
                   setEditPreviousSelectedId(sessions[0]?.id ?? '');
                   setEditPreviousModalOpen(true);
                 }}
                 disabled={sessions.length === 0}
-                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex aspect-square w-full flex-col items-start justify-between gap-6 rounded-2xl border p-10 text-left transition-all disabled:pointer-events-none disabled:opacity-50"
+                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex min-h-[220px] w-full flex-row items-center gap-6 rounded-2xl border p-8 text-left transition-all disabled:pointer-events-none disabled:opacity-50"
               >
-                <div className="bg-muted text-muted-foreground flex h-16 w-16 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
-                  <CalendarDays className="h-8 w-8" />
+                <div className="bg-muted text-muted-foreground flex h-20 w-20 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
+                  <CalendarDays className="h-10 w-10" />
                 </div>
                 <div className="space-y-1">
                   <div className="text-foreground text-2xl font-semibold">
@@ -944,6 +1025,30 @@ export default function AttendancePage() {
                   Link to event
                 </Button>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={csvInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleCsvImport(event);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => csvInputRef.current?.click()}
+                >
+                  <FileUp className="mr-1.5 h-4 w-4" />
+                  Upload CSV
+                </Button>
+                <span className="text-muted-foreground text-xs">
+                  {csvImportMessage ?? 'Use a `name` column or put names in the first column.'}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -1156,7 +1261,15 @@ export default function AttendancePage() {
       ══════════════════════════════════════════════════════════ */}
 
       {/* ── Link attendance to event modal ── */}
-      <Dialog open={linkModalOpen} onOpenChange={setLinkModalOpen}>
+      <Dialog
+        open={linkModalOpen}
+        onOpenChange={(open) => {
+          setLinkModalOpen(open);
+          if (!open && pendingStartAfterLinkPrompt) {
+            setPendingStartAfterLinkPrompt(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Link attendance to an event?</DialogTitle>
@@ -1221,8 +1334,17 @@ export default function AttendancePage() {
                           className="mt-1"
                         />
                         <div className="min-w-0">
-                          <div className="text-sm font-medium">
-                            {event.title}
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <span className="truncate">{event.title}</span>
+                            {linkTargetDate &&
+                            event.start_at.slice(0, 10) === linkTargetDate ? (
+                              <Badge
+                                variant="secondary"
+                                className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100"
+                              >
+                                Recommended
+                              </Badge>
+                            ) : null}
                           </div>
                           <div className="text-muted-foreground text-xs">
                             {new Date(event.start_at).toLocaleString()} ·{' '}
@@ -1252,6 +1374,10 @@ export default function AttendancePage() {
                 onClick={() => {
                   setLinkModalOpen(false);
                   setSelectedEventIdForLink(null);
+                  if (pendingStartAfterLinkPrompt) {
+                    setStartedAttendanceFlow(true);
+                    setPendingStartAfterLinkPrompt(false);
+                  }
                 }}
               >
                 Skip linking
@@ -1271,7 +1397,16 @@ export default function AttendancePage() {
       </Dialog>
 
       {/* ── New Meeting Modal ── */}
-      <Dialog open={newMeetingModalOpen} onOpenChange={setNewMeetingModalOpen}>
+      <Dialog
+        open={newMeetingModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            returnToMeetingSelection();
+            return;
+          }
+          setNewMeetingModalOpen(true);
+        }}
+      >
         <DialogContent
           className="sm:max-w-md"
           onKeyDown={(e) => handleModalPrimaryEnter(e, handleConfirmNewMeeting)}
@@ -1369,16 +1504,23 @@ export default function AttendancePage() {
       {/* ── Edit Previous Meeting Modal ── */}
       <Dialog
         open={editPreviousModalOpen}
-        onOpenChange={setEditPreviousModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            returnToMeetingSelection();
+            return;
+          }
+          setEditPreviousModalOpen(true);
+        }}
       >
         <DialogContent
-          className="sm:max-w-md"
+          className="sm:max-w-2xl"
           onKeyDown={(e) =>
             handleModalPrimaryEnter(
               e,
               () => {
                 if (!editPreviousSelectedId) return;
                 setEditPreviousModalOpen(false);
+                setStartedAttendanceFlow(true);
                 setSelectedSessionId(editPreviousSelectedId);
               },
               !editPreviousSelectedId,
@@ -1398,26 +1540,58 @@ export default function AttendancePage() {
                 No previous meetings found.
               </p>
             ) : (
-              <div className="max-h-64 space-y-1.5 overflow-y-auto">
-                {sessions.map((session) => (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => setEditPreviousSelectedId(session.id)}
-                    className={cn(
-                      'w-full rounded-lg border px-3.5 py-3 text-left text-sm transition-colors',
-                      editPreviousSelectedId === session.id
-                        ? 'border-primary bg-primary/5 ring-primary/30 ring-1'
-                        : 'border-border hover:bg-muted/40',
-                    )}
-                  >
-                    <div className="font-medium">{session.title}</div>
-                    <div className="text-muted-foreground mt-0.5 flex items-center gap-1 text-xs">
-                      <CalendarDays className="h-3 w-3" />
-                      {formatReadableDate(session.meeting_date)}
-                    </div>
-                  </button>
-                ))}
+              <div className="max-h-80 overflow-y-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Meeting</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="w-[72px] text-right">
+                        Delete
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sessions.map((session) => (
+                      <TableRow
+                        key={session.id}
+                        className={cn(
+                          'cursor-pointer',
+                          editPreviousSelectedId === session.id &&
+                            'bg-primary/5 hover:bg-primary/5',
+                        )}
+                        onClick={() => setEditPreviousSelectedId(session.id)}
+                      >
+                        <TableCell className="font-medium">
+                          {session.title}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <CalendarDays className="h-3.5 w-3.5" />
+                            {formatReadableDate(session.meeting_date)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditPreviousSelectedId(session.id);
+                              setSelectedSessionId(session.id);
+                              setDeleteModalOpen(true);
+                            }}
+                            aria-label={`Delete ${session.title}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </div>
@@ -1436,6 +1610,7 @@ export default function AttendancePage() {
               onClick={() => {
                 if (!editPreviousSelectedId) return;
                 setEditPreviousModalOpen(false);
+                setStartedAttendanceFlow(true);
                 setSelectedSessionId(editPreviousSelectedId);
               }}
             >
@@ -1531,10 +1706,6 @@ export default function AttendancePage() {
               type="button"
               variant="outline"
               onClick={() => {
-                if (pendingReturnToSelection) {
-                  returnToMeetingSelection();
-                  return;
-                }
                 setConfirmLeaveOpen(false);
                 setPendingHref(null);
                 setPendingSessionId(null);
@@ -1637,17 +1808,15 @@ function nextDuplicateMeetingTitle(
 ) {
   const escaped = baseTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const suffixPattern = new RegExp(`^${escaped} #(\\d+)$`);
-  let maxSuffix = 1;
+  const usedSuffixes = new Set<number>();
   sessions.forEach((session) => {
     if (session.meeting_date !== meetingDate) return;
-    if (session.title === baseTitle) {
-      maxSuffix = Math.max(maxSuffix, 1);
-      return;
-    }
     const match = session.title.match(suffixPattern);
     if (!match) return;
     const suffix = Number(match[1]);
-    if (!Number.isNaN(suffix)) maxSuffix = Math.max(maxSuffix, suffix);
+    if (!Number.isNaN(suffix)) usedSuffixes.add(suffix);
   });
-  return `${baseTitle} #${maxSuffix + 1}`;
+  let nextSuffix = 2;
+  while (usedSuffixes.has(nextSuffix)) nextSuffix += 1;
+  return `${baseTitle} #${nextSuffix}`;
 }
