@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useParams } from 'next/navigation';
 
+import { Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useSupabase } from '@kit/supabase/hooks/use-supabase';
@@ -24,7 +25,6 @@ import {
   DialogTitle,
 } from '@kit/ui/dialog';
 import { Input } from '@kit/ui/input';
-import { Upload } from 'lucide-react';
 
 type ProjectMemberRole = 'owner' | 'admin' | 'member' | 'viewer' | string;
 
@@ -544,14 +544,20 @@ export default function MembersPage() {
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
 
-    if (lines.length === 0) return [] as Array<{ full_name: string; email: string | null }>;
+    if (lines.length === 0)
+      return [] as Array<{ full_name: string; email: string | null }>;
 
-    const splitRow = (row: string) => row.split(',').map((cell) => cell.trim().replace(/^"(.*)"$/, '$1'));
+    const splitRow = (row: string) =>
+      row.split(',').map((cell) => cell.trim().replace(/^"(.*)"$/, '$1'));
     const header = splitRow(lines[0]!);
     const lowerHeader = header.map((h) => h.toLowerCase());
 
-    const nameIdx = lowerHeader.findIndex((h) => h === 'name' || h === 'full_name' || h === 'full name');
-    const emailIdx = lowerHeader.findIndex((h) => h === 'email' || h === 'email_address' || h === 'email address');
+    const nameIdx = lowerHeader.findIndex(
+      (h) => h === 'name' || h === 'full_name' || h === 'full name',
+    );
+    const emailIdx = lowerHeader.findIndex(
+      (h) => h === 'email' || h === 'email_address' || h === 'email address',
+    );
     const hasHeader = nameIdx >= 0 || emailIdx >= 0;
 
     const dataLines = hasHeader ? lines.slice(1) : lines;
@@ -559,8 +565,10 @@ export default function MembersPage() {
     return dataLines
       .map((line) => {
         const cols = splitRow(line);
-        const full_name = (nameIdx >= 0 ? cols[nameIdx] : cols[0])?.trim() ?? '';
-        const emailRaw = (emailIdx >= 0 ? cols[emailIdx] : cols[1])?.trim() ?? '';
+        const full_name =
+          (nameIdx >= 0 ? cols[nameIdx] : cols[0])?.trim() ?? '';
+        const emailRaw =
+          (emailIdx >= 0 ? cols[emailIdx] : cols[1])?.trim() ?? '';
         return {
           full_name,
           email: emailRaw ? emailRaw.toLowerCase() : null,
@@ -617,14 +625,18 @@ export default function MembersPage() {
           }
 
           successCount += 1;
-          setStudents((prev) => upsertStudent(prev, payload.student as StudentProfile));
+          setStudents((prev) =>
+            upsertStudent(prev, payload.student as StudentProfile),
+          );
         } catch {
           failCount += 1;
         }
       }
 
       if (successCount > 0) {
-        toast.success(`Added ${successCount} student${successCount === 1 ? '' : 's'} from CSV`);
+        toast.success(
+          `Added ${successCount} student${successCount === 1 ? '' : 's'} from CSV`,
+        );
       }
 
       if (failCount > 0) {
@@ -1142,7 +1154,8 @@ export default function MembersPage() {
 
                 <div className="border-border/70 space-y-2 border-t pt-3">
                   <p className="text-muted-foreground text-xs">
-                    Or upload a CSV with `name`/`full_name` and optional `email` columns.
+                    Or upload a CSV with `name`/`full_name` and optional `email`
+                    columns.
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <label>
