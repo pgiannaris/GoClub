@@ -36,6 +36,7 @@ import { Input } from '@kit/ui/input';
 import { Textarea } from '@kit/ui/textarea';
 import { cn } from '@kit/ui/utils';
 
+import { DatePickerField } from '../../_components/date-time-picker-field';
 import { AttendancePageShell } from '../_components/attendance-page-shell';
 import { formatReadableDate, todayIso } from '../_lib/attendance-utils';
 import { useAttendanceWorkspace } from '../_lib/use-attendance-workspace';
@@ -262,14 +263,13 @@ export default function AttendanceMeetingsPage() {
               >
                 Meeting Date
               </label>
-              <Input
+              <DatePickerField
                 id="meeting-date"
-                type="date"
                 value={form.meeting_date}
-                onChange={(event) =>
+                onChange={(value) =>
                   setForm((prev) => ({
                     ...prev,
-                    meeting_date: event.target.value,
+                    meeting_date: value,
                   }))
                 }
               />

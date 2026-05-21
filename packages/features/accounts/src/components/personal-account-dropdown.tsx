@@ -7,6 +7,7 @@ import Link from 'next/link';
 import type { JwtPayload } from '@supabase/supabase-js';
 
 import {
+  Bell,
   ChevronsUpDown,
   Home,
   LogOut,
@@ -26,6 +27,7 @@ import { SubMenuModeToggle } from '@kit/ui/mode-toggle';
 import { ProfileAvatar } from '@kit/ui/profile-avatar';
 import { Trans } from '@kit/ui/trans';
 import { cn } from '@kit/ui/utils';
+import { Badge } from '@kit/ui/badge';
 
 import { usePersonalAccountData } from '../hooks/use-personal-account-data';
 import { getUserMetadataDisplayName } from '../utils/get-user-metadata-display-name';
@@ -48,6 +50,9 @@ export function PersonalAccountDropdown({
   paths,
   features,
   account,
+  membershipBadgeLabel,
+  notificationMessage,
+  notifications,
 }: {
   user: JwtPayload;
 
@@ -56,6 +61,9 @@ export function PersonalAccountDropdown({
     name: string | null;
     avatar_url: string | null;
   };
+  membershipBadgeLabel?: string | null;
+  notificationMessage?: string | null;
+  notifications?: string[];
 
   signOutRequested: () => unknown;
 
@@ -181,6 +189,37 @@ export function PersonalAccountDropdown({
             </div>
           </div>
         </DropdownMenuItem>
+        {membershipBadgeLabel ? (
+          <DropdownMenuItem className={'!h-10 rounded-none'}>
+            <div className={'flex w-full items-center justify-between gap-2'}>
+              <span className={'text-xs'}>Status</span>
+              <Badge variant={'outline'}>{membershipBadgeLabel}</Badge>
+            </div>
+          </DropdownMenuItem>
+        ) : null}
+        {notificationMessage ? (
+          <DropdownMenuItem className={'!h-auto rounded-none py-2'}>
+            <div className={'flex items-start gap-2 text-xs'}>
+              <Bell className={'mt-0.5 h-3.5 w-3.5 shrink-0'} />
+              <span>{notificationMessage}</span>
+            </div>
+          </DropdownMenuItem>
+        ) : null}
+        {notifications && notifications.length > 0 ? (
+          <DropdownMenuItem className={'!h-auto rounded-none py-2'}>
+            <div className={'w-full space-y-1 text-xs'}>
+              <div className={'text-muted-foreground font-medium'}>
+                Notifications
+              </div>
+              {notifications.map((item, index) => (
+                <div key={`${item}-${index}`} className={'flex items-start gap-2'}>
+                  <Bell className={'mt-0.5 h-3.5 w-3.5 shrink-0'} />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </DropdownMenuItem>
+        ) : null}
 
         <DropdownMenuSeparator />
 

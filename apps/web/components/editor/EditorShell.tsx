@@ -196,17 +196,21 @@ async function uploadSiteImage(
   const extension = file.name.split('.').pop() || 'png';
   const imagePath = `projects/${projectId}/blocks/${blockId}/${crypto.randomUUID()}.${extension}`;
 
-  const result = await client.storage.from(SITE_IMAGES_BUCKET).upload(imagePath, bytes, {
-    cacheControl: '3600',
-    contentType: file.type || 'application/octet-stream',
-    upsert: false,
-  });
+  const result = await client.storage
+    .from(SITE_IMAGES_BUCKET)
+    .upload(imagePath, bytes, {
+      cacheControl: '3600',
+      contentType: file.type || 'application/octet-stream',
+      upsert: false,
+    });
 
   if (result.error) {
     throw result.error;
   }
 
-  const { data } = client.storage.from(SITE_IMAGES_BUCKET).getPublicUrl(imagePath);
+  const { data } = client.storage
+    .from(SITE_IMAGES_BUCKET)
+    .getPublicUrl(imagePath);
 
   return {
     imagePath,
@@ -655,9 +659,9 @@ export function EditorShell({ projectId }: { projectId: string }) {
                   altText: 'Uploaded image',
                   caption: '',
                 }
-            : type === 'features'
-              ? { items: ['Feature 1', 'Feature 2', 'Feature 3'] }
-              : undefined,
+              : type === 'features'
+                ? { items: ['Feature 1', 'Feature 2', 'Feature 3'] }
+                : undefined,
       settings:
         type === 'announcements'
           ? { limit: 4, pinnedFirst: true }
@@ -1956,11 +1960,13 @@ function BlockRenderer({
                 const existingPath =
                   typeof content.imagePath === 'string'
                     ? content.imagePath
-                    : content.imageUrl ?? null;
+                    : (content.imageUrl ?? null);
 
                 if (!file) {
                   if (existingPath) {
-                    await deleteSiteImage(client, existingPath).catch(() => null);
+                    await deleteSiteImage(client, existingPath).catch(
+                      () => null,
+                    );
                   }
 
                   onChange({
@@ -1983,7 +1989,9 @@ function BlockRenderer({
                   );
 
                   if (existingPath) {
-                    await deleteSiteImage(client, existingPath).catch(() => null);
+                    await deleteSiteImage(client, existingPath).catch(
+                      () => null,
+                    );
                   }
 
                   onChange({
@@ -2004,7 +2012,7 @@ function BlockRenderer({
               }}
             >
               <div className="flex flex-col space-y-1">
-                <span className="text-sm font-medium text-foreground">
+                <span className="text-foreground text-sm font-medium">
                   Upload image
                 </span>
                 <span className="text-muted-foreground text-xs">

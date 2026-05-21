@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import type { JwtPayload } from '@supabase/supabase-js';
 
+import { useSupabase } from '@kit/supabase/hooks/use-supabase';
 import {
   Sidebar,
   SidebarContent,
@@ -32,8 +33,132 @@ export function HomeSidebar(props: {
 }) {
   const { open, setOpen } = useSidebar();
   const pathname = usePathname();
-  const config = props.config ?? getNavigationConfig(pathname);
+  const baseConfig = props.config ?? getNavigationConfig(pathname);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [pendingAccessRequestsCount, setPendingAccessRequestsCount] =
+    useState(0);
+  const supabase = useSupabase();
+
+  const projectId = useMemo(() => {
+    const match = pathname?.match(/\/projects\/([^/]+)/);
+    return match?.[1] ?? null;
+  }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!projectId) {
+      setPendingAccessRequestsCount(0);
+      return;
+    }
+
+    const loadPendingAccessRequests = async () => {
+      console.log('[HomeSidebar] pending access check started', {
+        projectId,
+        pathname,
+      });
+
+      const { data: requestedRows, error: requestedError } = await (supabase as any)
+        .from('project_site_users')
+        .select('account_id')
+        .eq('project_id', projectId)
+        .eq('intent', 'student-member-requested');
+
+      if (cancelled) return;
+      if (requestedError) {
+        console.error('[HomeSidebar] failed loading requested rows', requestedError);
+        setPendingAccessRequestsCount(0);
+        return;
+      }
+
+      console.log('[HomeSidebar] requested rows', {
+        count: requestedRows?.length ?? 0,
+        rows: requestedRows,
+      });
+
+      const requestedAccountIds = new Set(
+        ((requestedRows ?? []) as Array<{ account_id: string | null }>)
+          .map((row) => row.account_id)
+          .filter((value): value is string => Boolean(value)),
+      );
+
+      if (requestedAccountIds.size === 0) {
+        console.log('[HomeSidebar] no requested account ids');
+        setPendingAccessRequestsCount(0);
+        return;
+      }
+
+      const { data: rosterRows, error: rosterError } = await (supabase as any)
+        .from('member_profiles')
+        .select('account_id')
+        .eq('project_id', projectId)
+        .in('account_id', Array.from(requestedAccountIds));
+
+      if (cancelled) return;
+      if (rosterError) {
+        console.error('[HomeSidebar] failed loading roster rows', rosterError);
+        setPendingAccessRequestsCount(0);
+        return;
+      }
+
+      console.log('[HomeSidebar] roster rows matching requested accounts', {
+        count: rosterRows?.length ?? 0,
+        rows: rosterRows,
+      });
+
+      const rosterAccountIds = new Set(
+        ((rosterRows ?? []) as Array<{ account_id: string | null }>)
+          .map((row) => row.account_id)
+          .filter((value): value is string => Boolean(value)),
+      );
+
+      const pendingCount = Array.from(requestedAccountIds).filter(
+        (accountId) => !rosterAccountIds.has(accountId),
+      ).length;
+
+      console.log('[HomeSidebar] pending access result', {
+        requestedAccountIds: Array.from(requestedAccountIds),
+        rosterAccountIds: Array.from(rosterAccountIds),
+        pendingCount,
+      });
+
+      setPendingAccessRequestsCount(pendingCount);
+    };
+
+    void loadPendingAccessRequests();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, supabase]);
+
+  const config = useMemo(() => {
+    const routes = baseConfig.routes.map((route) => {
+      if (!('children' in route)) return route;
+
+      return {
+        ...route,
+        children: route.children.map((child) => {
+          if (child.label !== 'Members') return child;
+
+          return {
+            ...child,
+            renderAction:
+              pendingAccessRequestsCount > 0 ? (
+                <span className="animate-in fade-in zoom-in-75 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white duration-700">
+                  {pendingAccessRequestsCount}
+                </span>
+              ) : null,
+          };
+        }),
+      };
+    });
+
+    return {
+      ...baseConfig,
+      routes,
+    };
+  }, [baseConfig, pendingAccessRequestsCount]);
 
   return (
     <Sidebar collapsible={'icon'} lockOpen={isAccountMenuOpen} overlayDesktop>

@@ -12,6 +12,13 @@ type ProjectAccessRole = 'owner' | 'admin' | 'member' | 'viewer';
 const EVENT_SELECT =
   'id, project_id, title, description, start_at, end_at, location, rsvp_url, status, visibility, created_at, updated_at';
 
+type AttendanceLinkSummary = {
+  session_id: string;
+  session_title: string;
+  meeting_date: string;
+  session_count: number;
+};
+
 export async function GET(_request: Request, context: ProjectRouteContext) {
   const { id: projectId } = await context.params;
   const authorization = await authorizeProjectAccess(projectId);
@@ -31,10 +38,20 @@ export async function GET(_request: Request, context: ProjectRouteContext) {
   if (error) {
     console.error('Failed to load project events', { projectId, error });
 
-    return NextResponse.json({ error: 'Failed to load events' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to load events' },
+      { status: 500 },
+    );
   }
 
-  const rsvpStatsByEventId = await getProjectEventRsvpStats(adminClient, projectId);
+  const rsvpStatsByEventId = await getProjectEventRsvpStats(
+    adminClient,
+    projectId,
+  );
+  const attendanceLinksByEventId = await getProjectAttendanceLinks(
+    adminClient,
+    projectId,
+  );
   const eventsWithStats = (data ?? []).map((event: any) => ({
     ...event,
     rsvp_stats: rsvpStatsByEventId[event.id] ?? {
@@ -43,6 +60,7 @@ export async function GET(_request: Request, context: ProjectRouteContext) {
       not_going: 0,
       total: 0,
     },
+    attendance_link: attendanceLinksByEventId[event.id] ?? null,
   }));
 
   return NextResponse.json(
@@ -78,12 +96,18 @@ export async function POST(request: Request, context: ProjectRouteContext) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400 },
+    );
   }
 
   const parsed = parseEventBody(body);
   if (!parsed) {
-    return NextResponse.json({ error: 'Valid event data is required' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Valid event data is required' },
+      { status: 400 },
+    );
   }
 
   const { data, error } = await (adminClient as any)
@@ -142,7 +166,10 @@ async function authorizeProjectAccess(projectId: string) {
 
   if (projectError || !project) {
     return {
-      response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
+      response: NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 },
+      ),
     };
   }
 
@@ -165,7 +192,10 @@ async function authorizeProjectAccess(projectId: string) {
     });
 
     return {
-      response: NextResponse.json({ error: 'Failed to verify project access' }, { status: 500 }),
+      response: NextResponse.json(
+        { error: 'Failed to verify project access' },
+        { status: 500 },
+      ),
     };
   }
 
@@ -180,7 +210,12 @@ async function authorizeProjectAccess(projectId: string) {
 }
 
 function normalizeProjectRole(value: unknown): ProjectAccessRole | null {
-  if (value === 'owner' || value === 'admin' || value === 'member' || value === 'viewer') {
+  if (
+    value === 'owner' ||
+    value === 'admin' ||
+    value === 'member' ||
+    value === 'viewer'
+  ) {
     return value;
   }
 
@@ -210,7 +245,9 @@ function parseEventBody(body: unknown) {
   const title = rawTitle.trim();
   const startAt = normalizeIsoDate(rawStartAt);
   const endAt =
-    typeof rawEndAt === 'string' && rawEndAt.trim() ? normalizeIsoDate(rawEndAt) : null;
+    typeof rawEndAt === 'string' && rawEndAt.trim()
+      ? normalizeIsoDate(rawEndAt)
+      : null;
 
   if (!title || !startAt) {
     return null;
@@ -222,10 +259,12 @@ function parseEventBody(body: unknown) {
 
   return {
     title,
-    description: typeof rawDescription === 'string' ? rawDescription.trim() || null : null,
+    description:
+      typeof rawDescription === 'string' ? rawDescription.trim() || null : null,
     start_at: startAt,
     end_at: endAt,
-    location: typeof rawLocation === 'string' ? rawLocation.trim() || null : null,
+    location:
+      typeof rawLocation === 'string' ? rawLocation.trim() || null : null,
     rsvp_url: typeof rawRsvpUrl === 'string' ? rawRsvpUrl.trim() || null : null,
     status: normalizeEventStatus(rawStatus),
     visibility: normalizeEventVisibility(rawVisibility),
@@ -280,14 +319,15 @@ async function dispatchProjectWebhook(
       }),
     });
   } catch (error) {
-    console.error('Failed to dispatch project webhook', { projectId, webhookUrl, error });
+    console.error('Failed to dispatch project webhook', {
+      projectId,
+      webhookUrl,
+      error,
+    });
   }
 }
 
-async function getProjectEventRsvpStats(
-  adminClient: any,
-  projectId: string,
-) {
+async function getProjectEventRsvpStats(adminClient: any, projectId: string) {
   const { data } = await (adminClient as any)
     .from('event_rsvps')
     .select('event_id, status')
@@ -315,4 +355,49 @@ async function getProjectEventRsvpStats(
   }
 
   return statsByEventId;
+}
+
+async function getProjectAttendanceLinks(adminClient: any, projectId: string) {
+  const { data, error } = await (adminClient as any)
+    .from('attendance_sessions')
+    .select('id, title, meeting_date, event_id, created_at')
+    .eq('project_id', projectId)
+    .not('event_id', 'is', null)
+    .order('meeting_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to load attendance links for events', {
+      projectId,
+      error,
+    });
+    return {} as Record<string, AttendanceLinkSummary>;
+  }
+
+  const linksByEventId: Record<string, AttendanceLinkSummary> = {};
+
+  for (const row of data ?? []) {
+    const eventId = row.event_id as string | null;
+    if (!eventId) continue;
+
+    const candidate: AttendanceLinkSummary = {
+      session_id: row.id as string,
+      session_title: row.title as string,
+      meeting_date: row.meeting_date as string,
+      session_count: 1,
+    };
+
+    const existing = linksByEventId[eventId];
+    if (!existing) {
+      linksByEventId[eventId] = candidate;
+      continue;
+    }
+
+    linksByEventId[eventId] = {
+      ...existing,
+      session_count: existing.session_count + 1,
+    };
+  }
+
+  return linksByEventId;
 }

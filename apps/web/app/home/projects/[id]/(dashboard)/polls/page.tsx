@@ -9,7 +9,6 @@ import { toast } from 'sonner';
 
 import { Badge } from '@kit/ui/badge';
 import { Button } from '@kit/ui/button';
-import { Checkbox } from '@kit/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +21,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@kit/ui/select';
 import { Textarea } from '@kit/ui/textarea';
+import { DateTimePickerField } from '../_components/date-time-picker-field';
 
 import {
   DashboardEmptyState,
@@ -599,8 +600,8 @@ export default function PollsPage() {
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="published">Published</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
                 </Select>
@@ -613,32 +614,64 @@ export default function PollsPage() {
                 >
                   Closes At
                 </label>
-                <Input
+                <DateTimePickerField
                   id="poll-closes-at"
-                  type="datetime-local"
                   value={form.closesAt}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setForm((prev) => ({
                       ...prev,
-                      closesAt: event.target.value,
+                      closesAt: value,
                     }))
                   }
                 />
               </div>
             </div>
 
-            <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
-              <Checkbox
-                checked={form.allowPublicVotes}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    allowPublicVotes: Boolean(checked),
-                  }))
-                }
-              />
-              <span>Allow voting from the public site</span>
-            </label>
+            <div className="space-y-1">
+              <label
+                htmlFor="poll-public-votes"
+                className="text-muted-foreground text-xs"
+              >
+                Visibility
+              </label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    id="poll-public-votes"
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-between"
+                  >
+                    <span className="font-normal">
+                      {form.allowPublicVotes ? 'Public' : 'Members only'}
+                    </span>
+                    <ChevronDown className="h-4 w-4 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        allowPublicVotes: false,
+                      }))
+                    }
+                  >
+                    Members only
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        allowPublicVotes: true,
+                      }))
+                    }
+                  >
+                    Public
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

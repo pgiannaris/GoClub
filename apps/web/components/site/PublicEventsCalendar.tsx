@@ -10,10 +10,13 @@ import {
   isSameDay,
   isSameMonth,
   isToday,
+  addMonths,
   startOfMonth,
   startOfWeek,
+  subMonths,
 } from 'date-fns';
 import { toast } from 'sonner';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@kit/ui/button';
 import {
@@ -139,8 +142,9 @@ export function PublicEventsCalendar({
     scheduleEvents.length > 0 && scheduleEvents[0]?.start_at
       ? new Date(scheduleEvents[0].start_at)
       : new Date();
-  const monthStart = startOfMonth(anchorDate);
-  const monthEnd = endOfMonth(anchorDate);
+  const [currentMonth, setCurrentMonth] = useState(startOfMonth(anchorDate));
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
   const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
@@ -336,12 +340,34 @@ export function PublicEventsCalendar({
           style={{ borderColor: theme.border }}
         >
           <div>
-            <h3
-              className="font-heading text-xl font-semibold"
-              style={{ color: theme.cardText }}
-            >
-              {format(monthStart, 'MMMM yyyy')}
-            </h3>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => setCurrentMonth((value) => subMonths(value, 1))}
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <h3
+                className="font-heading text-lg font-semibold"
+                style={{ color: theme.cardText }}
+              >
+                {format(monthStart, 'MMMM yyyy')}
+              </h3>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => setCurrentMonth((value) => addMonths(value, 1))}
+                aria-label="Next month"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
             <p className="text-sm" style={{ color: theme.mutedText }}>
               Public club calendar
             </p>
@@ -376,7 +402,7 @@ export function PublicEventsCalendar({
             return (
               <div
                 key={day.toISOString()}
-                className="min-h-28 border-r border-b p-2 md:min-h-32 md:p-3"
+                className="min-h-24 border-r border-b p-1.5 md:min-h-28 md:p-2"
                 style={{
                   borderColor: theme.border,
                   background: today ? theme.accentMuted : theme.surface,
@@ -385,7 +411,7 @@ export function PublicEventsCalendar({
               >
                 <div className="mb-2 flex items-center justify-between">
                   <span
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold"
                     style={{
                       background: today ? theme.accent : 'transparent',
                       color: today ? '#ffffff' : theme.cardText,

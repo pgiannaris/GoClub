@@ -55,9 +55,10 @@ export default async function PublicSitePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: { page?: string };
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { id } = await params;
+  const resolvedSearchParams = await searchParams;
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
   const adminClient = getSupabaseServerAdminClient();
   const authClient = getSupabaseServerClient();
@@ -84,7 +85,7 @@ export default async function PublicSitePage({
   const content = (project.content as SiteContent) || { pages: {} };
   const pages = content.pages || {};
   const pageKeys = Object.keys(pages);
-  const requestedPage = searchParams.page || 'home';
+  const requestedPage = resolvedSearchParams.page || 'home';
   const currentPageId = pages[requestedPage]
     ? requestedPage
     : pageKeys[0] || 'home';
@@ -425,7 +426,9 @@ function PublicBlockRenderer({
 
     case 'image': {
       const imageUrl =
-        typeof block.content?.imageUrl === 'string' ? block.content.imageUrl : null;
+        typeof block.content?.imageUrl === 'string'
+          ? block.content.imageUrl
+          : null;
       const altText =
         typeof block.content?.altText === 'string' ? block.content.altText : '';
       const caption =
@@ -471,36 +474,51 @@ function PublicBlockRenderer({
         <section className="px-4" id="about" style={tintedSectionStyle}>
           <div className="container mx-auto max-w-6xl">
             <div className="grid gap-8 md:grid-cols-3">
-              {block.content.items.map((item: string, i: number) => (
-                <div
-                  key={i}
-                  className={`border p-8 ${hoverCardClassName}`}
-                  style={elevatedCardStyle}
-                >
+              {(Array.isArray(block.content?.items)
+                ? block.content.items
+                : []
+              ).map((item: any, i: number) => {
+                const title =
+                  typeof item === 'string'
+                    ? item
+                    : typeof item?.title === 'string'
+                      ? item.title
+                      : `Feature ${i + 1}`;
+                const description =
+                  typeof item?.description === 'string'
+                    ? item.description
+                    : 'Curated resources, programming, and leadership support tailored to your club.';
+
+                return (
                   <div
-                    className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold"
-                    style={{
-                      background: theme.accentSoft,
-                      color: theme.accentText,
-                    }}
+                    key={i}
+                    className={`border p-8 ${hoverCardClassName}`}
+                    style={elevatedCardStyle}
                   >
-                    {i + 1}
+                    <div
+                      className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold"
+                      style={{
+                        background: theme.accentSoft,
+                        color: theme.accentText,
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                    <h3
+                      className="font-heading mb-3 text-xl font-semibold"
+                      style={{ color: theme.cardText }}
+                    >
+                      {title}
+                    </h3>
+                    <p
+                      className="leading-relaxed"
+                      style={{ color: theme.mutedText }}
+                    >
+                      {description}
+                    </p>
                   </div>
-                  <h3
-                    className="font-heading mb-3 text-xl font-semibold"
-                    style={{ color: theme.cardText }}
-                  >
-                    {item}
-                  </h3>
-                  <p
-                    className="leading-relaxed"
-                    style={{ color: theme.mutedText }}
-                  >
-                    Curated resources, programming, and leadership support
-                    tailored to your club.
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

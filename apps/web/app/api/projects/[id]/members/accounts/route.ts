@@ -149,6 +149,7 @@ export async function POST(request: Request, context: ProjectRouteContext) {
   }
 
   if (existingByAccount) {
+    await markSiteUserAsMember(adminClient, projectId, accountId);
     return NextResponse.json(
       { student: existingByAccount, alreadyExists: true },
       { status: 200 },
@@ -227,6 +228,8 @@ export async function POST(request: Request, context: ProjectRouteContext) {
         return NextResponse.json({ error: updateError.message }, { status: 400 });
       }
 
+      await markSiteUserAsMember(adminClient, projectId, account.id);
+
       return NextResponse.json(
         { student: updatedStudent, linkedExisting: true },
         { status: 200 },
@@ -274,6 +277,7 @@ export async function POST(request: Request, context: ProjectRouteContext) {
           .single();
 
         if (!updateError && updatedStudent) {
+          await markSiteUserAsMember(adminClient, projectId, account.id);
           return NextResponse.json(
             { student: updatedStudent, linkedExisting: true },
             { status: 200 },
@@ -301,6 +305,7 @@ export async function POST(request: Request, context: ProjectRouteContext) {
     );
   }
 
+  await markSiteUserAsMember(adminClient, projectId, account.id);
   return NextResponse.json({ student }, { status: 200 });
 }
 
@@ -386,4 +391,19 @@ function siteUserSortIndex(intent: SiteUserIntent) {
   if (intent === 'student-member') return 1;
   if (intent === 'administrator') return 2;
   return 3;
+}
+
+async function markSiteUserAsMember(
+  adminClient: unknown,
+  projectId: string,
+  accountId: string,
+) {
+  await (adminClient as any).from('project_site_users').upsert(
+    {
+      project_id: projectId,
+      account_id: accountId,
+      intent: 'student-member',
+    },
+    { onConflict: 'project_id,account_id' },
+  );
 }

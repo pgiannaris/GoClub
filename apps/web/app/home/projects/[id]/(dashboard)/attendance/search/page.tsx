@@ -1,12 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+
 import { useParams } from 'next/navigation';
 
 import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
 
 import { Button } from '@kit/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@kit/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@kit/ui/card';
 import { Input } from '@kit/ui/input';
 import {
   Select,
@@ -17,13 +24,14 @@ import {
 } from '@kit/ui/select';
 import { cn } from '@kit/ui/utils';
 
+import { DatePickerField } from '../../_components/date-time-picker-field';
 import { AttendancePageShell } from '../_components/attendance-page-shell';
 import { AttendanceStatusBadge } from '../_components/attendance-status-controls';
 import {
   ATTENDANCE_STATUS_OPTIONS,
+  type StatusFilter,
   buildAttendanceHistory,
   formatReadableDate,
-  type StatusFilter,
 } from '../_lib/attendance-utils';
 import { useAttendanceWorkspace } from '../_lib/use-attendance-workspace';
 
@@ -31,16 +39,25 @@ export default function AttendanceSearchPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
 
-  const { allKnownNames, entriesBySession, loading, members, refresh, sessions } =
-    useAttendanceWorkspace(projectId);
+  const {
+    allKnownNames,
+    entriesBySession,
+    loading,
+    members,
+    refresh,
+    sessions,
+  } = useAttendanceWorkspace(projectId);
 
   const [studentQuery, setStudentQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [meetingFilter, setMeetingFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
   const [studentInputFocused, setStudentInputFocused] = useState(false);
-  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] = useState(-1);
-  const [expandedMeetingIds, setExpandedMeetingIds] = useState<Set<string>>(new Set());
+  const [highlightedSuggestionIndex, setHighlightedSuggestionIndex] =
+    useState(-1);
+  const [expandedMeetingIds, setExpandedMeetingIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const historyRows = useMemo(
     () => buildAttendanceHistory(sessions, entriesBySession, members),
@@ -75,9 +92,13 @@ export default function AttendanceSearchPage() {
     const query = studentQuery.trim().toLowerCase();
 
     return historyRows.filter((row) => {
-      const matchesStudent = query ? row.member_name.toLowerCase().includes(query) : true;
-      const matchesStatus = statusFilter === 'all' ? true : row.status === statusFilter;
-      const matchesMeeting = meetingFilter === 'all' ? true : row.session_id === meetingFilter;
+      const matchesStudent = query
+        ? row.member_name.toLowerCase().includes(query)
+        : true;
+      const matchesStatus =
+        statusFilter === 'all' ? true : row.status === statusFilter;
+      const matchesMeeting =
+        meetingFilter === 'all' ? true : row.session_id === meetingFilter;
       const matchesDate = dateFilter ? row.meeting_date === dateFilter : true;
 
       return matchesStudent && matchesStatus && matchesMeeting && matchesDate;
@@ -116,10 +137,14 @@ export default function AttendanceSearchPage() {
   }, [filteredRows]);
 
   useEffect(() => {
-    const validMeetingIds = new Set(groupedResults.map((group) => group.sessionId));
+    const validMeetingIds = new Set(
+      groupedResults.map((group) => group.sessionId),
+    );
     setExpandedMeetingIds((current) => {
       if (current.size === 0) return current;
-      const next = new Set(Array.from(current).filter((id) => validMeetingIds.has(id)));
+      const next = new Set(
+        Array.from(current).filter((id) => validMeetingIds.has(id)),
+      );
       return next.size === current.size ? current : next;
     });
   }, [groupedResults]);
@@ -163,16 +188,20 @@ export default function AttendanceSearchPage() {
         <CardHeader>
           <CardTitle>Filters</CardTitle>
           <CardDescription>
-            Narrow the attendance history by the person, meeting, status, or date you care about.
+            Narrow the attendance history by the person, meeting, status, or
+            date you care about.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-4">
           <div className="space-y-2 lg:col-span-2">
-            <label htmlFor="student-query" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <label
+              htmlFor="student-query"
+              className="text-muted-foreground text-xs font-medium tracking-wide uppercase"
+            >
               Student
             </label>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Search className="text-muted-foreground pointer-events-none absolute top-3 left-3 h-4 w-4" />
               <Input
                 id="student-query"
                 className="pl-9"
@@ -184,19 +213,24 @@ export default function AttendanceSearchPage() {
                   setHighlightedSuggestionIndex(-1);
                 }}
                 onKeyDown={(event) => {
-                  if (!studentInputFocused || studentSuggestions.length === 0) return;
+                  if (!studentInputFocused || studentSuggestions.length === 0)
+                    return;
 
                   if (event.key === 'ArrowDown') {
                     event.preventDefault();
                     setHighlightedSuggestionIndex((currentIndex) =>
-                      currentIndex >= studentSuggestions.length - 1 ? 0 : currentIndex + 1,
+                      currentIndex >= studentSuggestions.length - 1
+                        ? 0
+                        : currentIndex + 1,
                     );
                   }
 
                   if (event.key === 'ArrowUp') {
                     event.preventDefault();
                     setHighlightedSuggestionIndex((currentIndex) =>
-                      currentIndex <= 0 ? studentSuggestions.length - 1 : currentIndex - 1,
+                      currentIndex <= 0
+                        ? studentSuggestions.length - 1
+                        : currentIndex - 1,
                     );
                   }
 
@@ -225,18 +259,21 @@ export default function AttendanceSearchPage() {
               />
 
               {studentInputFocused && studentSuggestions.length > 0 ? (
-                <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-lg">
+                <div className="border-border/70 bg-background absolute top-full right-0 left-0 z-10 mt-2 overflow-hidden rounded-xl border shadow-lg">
                   {studentSuggestions.map((name) => (
                     <button
                       key={name}
                       type="button"
                       className={cn(
-                        'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-muted/40',
-                        studentSuggestions[highlightedSuggestionIndex] === name && 'bg-muted/40',
+                        'hover:bg-muted/40 block w-full px-3 py-2 text-left text-sm transition-colors',
+                        studentSuggestions[highlightedSuggestionIndex] ===
+                          name && 'bg-muted/40',
                       )}
                       onMouseDown={(event) => event.preventDefault()}
                       onMouseEnter={() => {
-                        setHighlightedSuggestionIndex(studentSuggestions.indexOf(name));
+                        setHighlightedSuggestionIndex(
+                          studentSuggestions.indexOf(name),
+                        );
                       }}
                       onClick={() => selectStudentSuggestion(name)}
                     >
@@ -249,17 +286,23 @@ export default function AttendanceSearchPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
               Status
             </label>
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 {ATTENDANCE_STATUS_OPTIONS.map((statusOption) => (
-                  <SelectItem key={statusOption.value} value={statusOption.value}>
+                  <SelectItem
+                    key={statusOption.value}
+                    value={statusOption.value}
+                  >
                     {statusOption.label}
                   </SelectItem>
                 ))}
@@ -268,14 +311,14 @@ export default function AttendanceSearchPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
               Date
             </label>
-            <Input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
+            <DatePickerField value={dateFilter} onChange={setDateFilter} />
           </div>
 
           <div className="space-y-2 lg:col-span-3">
-            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
               Meeting
             </label>
             <Select value={meetingFilter} onValueChange={setMeetingFilter}>
@@ -316,8 +359,10 @@ export default function AttendanceSearchPage() {
             <div>
               <CardTitle>Results</CardTitle>
               <CardDescription>
-                {groupedResults.length} meeting{groupedResults.length === 1 ? '' : 's'} and{' '}
-                {filteredRows.length} matching attendance record{filteredRows.length === 1 ? '' : 's'}.
+                {groupedResults.length} meeting
+                {groupedResults.length === 1 ? '' : 's'} and{' '}
+                {filteredRows.length} matching attendance record
+                {filteredRows.length === 1 ? '' : 's'}.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -328,7 +373,9 @@ export default function AttendanceSearchPage() {
                 onClick={() => {
                   const allExpanded =
                     groupedResults.length > 0 &&
-                    groupedResults.every((group) => expandedMeetingIds.has(group.sessionId));
+                    groupedResults.every((group) =>
+                      expandedMeetingIds.has(group.sessionId),
+                    );
                   if (allExpanded) {
                     setExpandedMeetingIds(new Set());
                     return;
@@ -340,7 +387,9 @@ export default function AttendanceSearchPage() {
                 disabled={loading || groupedResults.length === 0}
               >
                 {groupedResults.length > 0 &&
-                groupedResults.every((group) => expandedMeetingIds.has(group.sessionId))
+                groupedResults.every((group) =>
+                  expandedMeetingIds.has(group.sessionId),
+                )
                   ? 'Collapse all'
                   : 'Expand all'}
               </Button>
@@ -349,15 +398,18 @@ export default function AttendanceSearchPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="max-h-[70vh] overflow-auto">
-            <div className="divide-y divide-border/60">
+            <div className="divide-border/60 divide-y">
               {loading ? (
                 Array.from({ length: 8 }).map((_, index) => (
-                  <div key={`search-skeleton-${index}`} className="animate-pulse px-4 py-4">
-                    <div className="h-10 rounded-xl bg-muted/40" />
+                  <div
+                    key={`search-skeleton-${index}`}
+                    className="animate-pulse px-4 py-4"
+                  >
+                    <div className="bg-muted/40 h-10 rounded-xl" />
                   </div>
                 ))
               ) : groupedResults.length === 0 ? (
-                <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <div className="text-muted-foreground px-4 py-12 text-center text-sm">
                   No attendance records match the current filters.
                 </div>
               ) : (
@@ -367,11 +419,12 @@ export default function AttendanceSearchPage() {
                     <div key={group.sessionId}>
                       <button
                         type="button"
-                        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/20"
+                        className="hover:bg-muted/20 flex w-full items-center justify-between px-4 py-3 text-left transition-colors"
                         onClick={() =>
                           setExpandedMeetingIds((current) => {
                             const next = new Set(current);
-                            if (next.has(group.sessionId)) next.delete(group.sessionId);
+                            if (next.has(group.sessionId))
+                              next.delete(group.sessionId);
                             else next.add(group.sessionId);
                             return next;
                           })
@@ -380,45 +433,55 @@ export default function AttendanceSearchPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             {isExpanded ? (
-                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              <ChevronDown className="text-muted-foreground h-4 w-4" />
                             ) : (
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              <ChevronRight className="text-muted-foreground h-4 w-4" />
                             )}
-                            <span className="font-medium">{group.sessionTitle}</span>
+                            <span className="font-medium">
+                              {group.sessionTitle}
+                            </span>
                           </div>
-                          <div className="pl-6 text-xs text-muted-foreground">
+                          <div className="text-muted-foreground pl-6 text-xs">
                             {formatReadableDate(group.meetingDate)}
                           </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {group.rows.length} record{group.rows.length === 1 ? '' : 's'}
+                        <div className="text-muted-foreground text-xs">
+                          {group.rows.length} record
+                          {group.rows.length === 1 ? '' : 's'}
                         </div>
                       </button>
 
                       {isExpanded ? (
                         <div className="pl-8">
-                        <table className="min-w-full border-t border-border/50">
-                          <thead className="bg-muted/20">
-                            <tr className="text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              <th className="px-4 py-2">Student</th>
-                              <th className="px-4 py-2">Type</th>
-                              <th className="px-4 py-2">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/40">
-                            {group.rows.map((row) => (
-                              <tr key={row.key} className="transition-colors hover:bg-muted/10">
-                                <td className="px-4 py-3 text-sm">{row.member_name}</td>
-                                <td className="px-4 py-3 text-sm text-muted-foreground">
-                                  {row.is_roster ? 'Roster' : 'Manual'}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <AttendanceStatusBadge status={row.status} />
-                                </td>
+                          <table className="border-border/50 min-w-full border-t">
+                            <thead className="bg-muted/20">
+                              <tr className="text-muted-foreground text-left text-xs font-medium tracking-wide uppercase">
+                                <th className="px-4 py-2">Student</th>
+                                <th className="px-4 py-2">Type</th>
+                                <th className="px-4 py-2">Status</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-border/40 divide-y">
+                              {group.rows.map((row) => (
+                                <tr
+                                  key={row.key}
+                                  className="hover:bg-muted/10 transition-colors"
+                                >
+                                  <td className="px-4 py-3 text-sm">
+                                    {row.member_name}
+                                  </td>
+                                  <td className="text-muted-foreground px-4 py-3 text-sm">
+                                    {row.is_roster ? 'Roster' : 'Manual'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <AttendanceStatusBadge
+                                      status={row.status}
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       ) : null}
                     </div>

@@ -247,9 +247,7 @@ function getRelativeLuminance(color: string) {
 
   const normalizeChannel = (channel: number) => {
     const value = channel / 255;
-    return value <= 0.03928
-      ? value / 12.92
-      : ((value + 0.055) / 1.055) ** 2.4;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
 
   const r = normalizeChannel(parsed.r);
@@ -344,7 +342,9 @@ export function getSiteTheme(
 ) {
   const isDark = options?.isDark ?? false;
   const accent = normalizeAccentColor(siteSettings.accent);
-  const presetAccent = SITE_ACCENT_OPTIONS.find((option) => option.color === accent);
+  const presetAccent = SITE_ACCENT_OPTIONS.find(
+    (option) => option.color === accent,
+  );
   const accentTheme = presetAccent
     ? ACCENT_THEME[presetAccent.value]
     : {

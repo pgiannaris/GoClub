@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
 import { CalendarDays, ChevronDown, Pencil, Repeat, Trash } from 'lucide-react';
@@ -41,6 +42,7 @@ import {
   DashboardLoadingList,
   DashboardPageHeader,
 } from '../_components/dashboard-page-primitives';
+import { DateTimePickerField } from '../_components/date-time-picker-field';
 
 type EventRecord = {
   id: string;
@@ -62,6 +64,12 @@ type EventRecord = {
     not_going: number;
     total: number;
   };
+  attendance_link?: {
+    session_id: string;
+    session_title: string;
+    meeting_date: string;
+    session_count: number;
+  } | null;
 };
 
 type EventForm = {
@@ -636,6 +644,24 @@ export default function EventsPage() {
                       value={event.rsvp_stats?.total ?? 0}
                     />
                   </div>
+                  {event.attendance_link ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                        Attendance linked
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        {event.attendance_link.session_count} attendance
+                        {event.attendance_link.session_count === 1 ? '' : 's'}
+                      </span>
+                      <Button asChild size="sm" variant="outline">
+                        <Link
+                          href={`/home/projects/${encodeURIComponent(projectId)}/attendance?session=${encodeURIComponent(event.attendance_link.session_id)}`}
+                        >
+                          View attendance
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 {canCreateEvents ? (
                   <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -913,14 +939,13 @@ export default function EventsPage() {
                     >
                       Start
                     </label>
-                    <Input
+                    <DateTimePickerField
                       id="event-start"
-                      type="datetime-local"
                       value={form.startAt}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         setForm((prev) => ({
                           ...prev,
-                          startAt: event.target.value,
+                          startAt: value,
                         }))
                       }
                     />
@@ -933,14 +958,13 @@ export default function EventsPage() {
                     >
                       End
                     </label>
-                    <Input
+                    <DateTimePickerField
                       id="event-end"
-                      type="datetime-local"
                       value={form.endAt}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         setForm((prev) => ({
                           ...prev,
-                          endAt: event.target.value,
+                          endAt: value,
                         }))
                       }
                     />

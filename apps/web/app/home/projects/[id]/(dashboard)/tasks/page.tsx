@@ -20,6 +20,7 @@ import {
 } from '@kit/ui/dialog';
 import { Input } from '@kit/ui/input';
 import { Textarea } from '@kit/ui/textarea';
+import { DatePickerField } from '../_components/date-time-picker-field';
 
 type TaskStatus = 'todo' | 'in_progress' | 'done';
 type TaskPriority = 'low' | 'medium' | 'high';
@@ -946,11 +947,10 @@ export default function TasksPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Due date</label>
-                <Input
-                  type="date"
+                <DatePickerField
                   value={form.dueDate}
-                  onChange={(event) =>
-                    setForm((c) => ({ ...c, dueDate: event.target.value }))
+                  onChange={(value) =>
+                    setForm((c) => ({ ...c, dueDate: value }))
                   }
                 />
               </div>

@@ -34,12 +34,18 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400 },
+    );
   }
 
   const parsed = parsePollBody(body);
   if (!parsed) {
-    return NextResponse.json({ error: 'Valid poll data is required' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Valid poll data is required' },
+      { status: 400 },
+    );
   }
 
   const existingPoll = await getProjectPollById(adminClient, projectId, pollId);
@@ -54,11 +60,15 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
 
   const optionsChanged =
     currentOptions.length !== nextOptions.length ||
-    currentOptions.some((option: string, index: number) => option !== nextOptions[index]);
+    currentOptions.some(
+      (option: string, index: number) => option !== nextOptions[index],
+    );
 
   if (optionsChanged && (existingPoll.total_votes ?? 0) > 0) {
     return NextResponse.json(
-      { error: 'Poll options cannot be changed after votes have been submitted' },
+      {
+        error: 'Poll options cannot be changed after votes have been submitted',
+      },
       { status: 400 },
     );
   }
@@ -90,7 +100,11 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
       .eq('poll_id', pollId);
 
     if (deleteError) {
-      console.error('Failed to replace poll options', { projectId, pollId, deleteError });
+      console.error('Failed to replace poll options', {
+        projectId,
+        pollId,
+        deleteError,
+      });
       return NextResponse.json(
         { error: deleteError?.message || 'Failed to update poll options' },
         { status: 400 },
@@ -122,7 +136,10 @@ export async function PATCH(request: Request, context: ProjectRouteContext) {
 
   const poll = await getProjectPollById(adminClient, projectId, pollId);
   if (!poll) {
-    return NextResponse.json({ error: 'Failed to load updated poll' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to load updated poll' },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ poll }, { status: 200 });
@@ -190,7 +207,10 @@ async function authorizeProjectAccess(projectId: string) {
 
   if (projectError || !project) {
     return {
-      response: NextResponse.json({ error: 'Project not found' }, { status: 404 }),
+      response: NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 },
+      ),
     };
   }
 
@@ -231,7 +251,12 @@ async function authorizeProjectAccess(projectId: string) {
 }
 
 function normalizeProjectRole(value: unknown): ProjectAccessRole | null {
-  if (value === 'owner' || value === 'admin' || value === 'member' || value === 'viewer') {
+  if (
+    value === 'owner' ||
+    value === 'admin' ||
+    value === 'member' ||
+    value === 'viewer'
+  ) {
     return value;
   }
 
@@ -257,7 +282,8 @@ function parsePollBody(body: unknown): {
   const rawTitle = (body as { title?: unknown }).title;
   const rawDescription = (body as { description?: unknown }).description;
   const rawStatus = (body as { status?: unknown }).status;
-  const rawAllowPublicVotes = (body as { allow_public_votes?: unknown }).allow_public_votes;
+  const rawAllowPublicVotes = (body as { allow_public_votes?: unknown })
+    .allow_public_votes;
   const rawClosesAt = (body as { closes_at?: unknown }).closes_at;
   const rawOptions = (body as { options?: unknown }).options;
 
@@ -271,16 +297,26 @@ function parsePollBody(body: unknown): {
   }
 
   const options = rawOptions
-    .map((option) => (typeof option === 'string' ? option.trim().slice(0, 120) : ''))
+    .map((option) =>
+      typeof option === 'string' ? option.trim().slice(0, 120) : '',
+    )
     .filter(Boolean);
 
-  const uniqueOptions = Array.from(new Set(options.map((option) => option.toLowerCase())));
-  if (options.length < 2 || options.length > 8 || uniqueOptions.length !== options.length) {
+  const uniqueOptions = Array.from(
+    new Set(options.map((option) => option.toLowerCase())),
+  );
+  if (
+    options.length < 2 ||
+    options.length > 8 ||
+    uniqueOptions.length !== options.length
+  ) {
     return null;
   }
 
   const closesAt =
-    typeof rawClosesAt === 'string' && rawClosesAt.trim() ? normalizeIsoDate(rawClosesAt) : null;
+    typeof rawClosesAt === 'string' && rawClosesAt.trim()
+      ? normalizeIsoDate(rawClosesAt)
+      : null;
 
   if (typeof rawClosesAt === 'string' && rawClosesAt.trim() && !closesAt) {
     return null;

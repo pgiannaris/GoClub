@@ -130,7 +130,11 @@ export function PublicSiteHeader(props: PublicSiteHeaderProps) {
 
         <div className="hidden shrink-0 items-center gap-2 lg:flex">
           {props.user ? (
-            <PublicSiteAccountMenu user={props.user} account={props.account} />
+            <PublicSiteAccountMenu
+              projectId={props.projectId}
+              user={props.user}
+              account={props.account}
+            />
           ) : (
             <>
               <Link
@@ -157,7 +161,11 @@ export function PublicSiteHeader(props: PublicSiteHeaderProps) {
 
         <div className="flex shrink-0 items-center gap-2 lg:hidden">
           {props.user ? (
-            <PublicSiteAccountMenu user={props.user} account={props.account} />
+            <PublicSiteAccountMenu
+              projectId={props.projectId}
+              user={props.user}
+              account={props.account}
+            />
           ) : (
             <Link
               href={getAuthHref('/auth/sign-in', currentSiteUrl)}

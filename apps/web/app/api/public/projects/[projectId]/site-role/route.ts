@@ -86,6 +86,103 @@ export async function POST(request: Request, context: PublicProjectSiteRoleRoute
   return NextResponse.json({ ok: true }, { status: 200 });
 }
 
+export async function GET(_request: Request, context: PublicProjectSiteRoleRouteContext) {
+  const { projectId } = await context.params;
+  const adminClient = getSupabaseServerAdminClient();
+  const client = getSupabaseServerClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await client.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const [
+    { data: project },
+    { data: siteUser },
+    { data: rosterLink },
+    { data: membership },
+    { data: upcomingEvents },
+  ] =
+    await Promise.all([
+      (adminClient as any).from('projects').select('id, owner_id').eq('id', projectId).maybeSingle(),
+      (adminClient as any)
+        .from('project_site_users')
+        .select('account_id')
+        .eq('project_id', projectId)
+        .eq('account_id', user.id)
+        .maybeSingle(),
+      (adminClient as any)
+        .from('member_profiles')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('account_id', user.id)
+        .maybeSingle(),
+      (adminClient as any)
+        .from('project_members')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('account_id', user.id)
+        .maybeSingle(),
+      (adminClient as any)
+        .from('events')
+        .select('id, title, start_at, visibility, status')
+        .eq('project_id', projectId)
+        .eq('visibility', 'public')
+        .eq('status', 'scheduled')
+        .gte('start_at', new Date().toISOString())
+        .order('start_at', { ascending: true })
+        .limit(3),
+    ]);
+
+  if (!project) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+  }
+
+  const knownToProject =
+    Boolean(siteUser?.account_id) ||
+    Boolean(rosterLink?.id) ||
+    Boolean(membership?.id) ||
+    project.owner_id === user.id;
+
+  const isMember = Boolean(rosterLink?.id);
+  const approvedNotice =
+    isMember && siteUser?.intent === 'student-member-requested';
+  const notifications: string[] = [];
+
+  if (approvedNotice) {
+    notifications.push('You were approved and added to the member roster.');
+  } else if (siteUser?.intent === 'student-member-requested') {
+    notifications.push('Your member request is pending review.');
+  }
+
+  const events = (upcomingEvents ?? []) as Array<{
+    title?: string | null;
+    start_at?: string | null;
+  }>;
+  events.forEach((event) => {
+    if (!event.start_at || !event.title) return;
+    const date = new Date(event.start_at);
+    if (Number.isNaN(date.getTime())) return;
+    notifications.push(
+      `Upcoming: ${event.title} on ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`,
+    );
+  });
+
+  return NextResponse.json(
+    {
+      shouldPrompt: !knownToProject,
+      isMember,
+      approvedNotice,
+      notifications,
+    },
+    { status: 200 },
+  );
+}
+
 function parseIntent(body: unknown): SiteRoleIntent | null {
   if (!body || typeof body !== 'object') {
     return null;

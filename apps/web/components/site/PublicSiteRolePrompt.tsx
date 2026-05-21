@@ -40,9 +40,48 @@ export function PublicSiteRolePrompt(props: {
 
     const hasAnswered = window.localStorage.getItem(storageKey);
 
-    if (!hasAnswered) {
-      setOpen(true);
-    }
+    if (hasAnswered) return;
+
+    let cancelled = false;
+
+    const checkPromptEligibility = async () => {
+      try {
+        const response = await fetch(
+          `/api/public/projects/${encodeURIComponent(props.projectId)}/site-role`,
+          {
+            method: 'GET',
+            credentials: 'include',
+          },
+        );
+
+        if (!response.ok) {
+          if (!cancelled) setOpen(true);
+          return;
+        }
+
+        const payload = (await response.json().catch(() => ({}))) as {
+          shouldPrompt?: boolean;
+        };
+
+        if (cancelled) return;
+
+        if (payload.shouldPrompt) {
+          setOpen(true);
+        } else {
+          // Known users should not see the role popup repeatedly.
+          rememberChoice('student-member');
+          setOpen(false);
+        }
+      } catch {
+        if (!cancelled) setOpen(true);
+      }
+    };
+
+    void checkPromptEligibility();
+
+    return () => {
+      cancelled = true;
+    };
   }, [storageKey]);
 
   const rememberChoice = (role: SiteRoleChoice) => {
@@ -122,10 +161,10 @@ export function PublicSiteRolePrompt(props: {
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => nextOpen && setOpen(true)}>
-      <DialogContent className="max-h-[70vh] w-full max-w-md overflow-auto sm:max-w-lg">
+      <DialogContent className="max-h-[80vh] w-full max-w-[92vw] p-10 sm:max-w-xl md:max-w-2xl">
         {step === 'role' ? (
-          <>
-            <DialogHeader>
+          <div className="space-y-6">
+            <DialogHeader className="space-y-3">
               <DialogTitle>What brings you here?</DialogTitle>
               <DialogDescription className="text-sm">
                 Pick the option that fits you. Students can request roster
@@ -133,7 +172,7 @@ export function PublicSiteRolePrompt(props: {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="text-muted-foreground space-y-3 text-sm">
+            <div className="text-muted-foreground space-y-4 text-sm leading-relaxed">
               <p className="break-words whitespace-normal">
                 Students and members can request to join the class roster to
                 gain additional access.
@@ -143,7 +182,7 @@ export function PublicSiteRolePrompt(props: {
               </p>
             </div>
 
-            <DialogFooter className="gap-2 sm:justify-start">
+            <DialogFooter className="gap-3 pt-2 sm:justify-start">
               <Button
                 onClick={handleStudentMember}
                 type="button"
@@ -172,10 +211,10 @@ export function PublicSiteRolePrompt(props: {
                   : 'Just Visiting'}
               </Button>
             </DialogFooter>
-          </>
+          </div>
         ) : (
-          <>
-            <DialogHeader>
+          <div className="space-y-6">
+            <DialogHeader className="space-y-3">
               <DialogTitle>Request to join the class?</DialogTitle>
               <DialogDescription className="text-sm">
                 Requesting adds you to the site user list for admin review.
@@ -183,7 +222,7 @@ export function PublicSiteRolePrompt(props: {
               </DialogDescription>
             </DialogHeader>
 
-            <DialogFooter className="gap-2 sm:justify-start">
+            <DialogFooter className="gap-3 pt-2 sm:justify-start">
               <Button
                 onClick={handleStudentRequest}
                 type="button"
@@ -203,7 +242,7 @@ export function PublicSiteRolePrompt(props: {
                 {savingChoice === 'student-member' ? 'Saving...' : 'Not now'}
               </Button>
             </DialogFooter>
-          </>
+          </div>
         )}
       </DialogContent>
     </Dialog>

@@ -83,6 +83,7 @@ type ProjectMember = {
 
 type StudentProfile = {
   id: string;
+  account_id: string | null;
   full_name: string;
   joined_at: string | null;
 };
@@ -127,6 +128,7 @@ type AttendanceEntryRecord = {
 
 type ProjectSiteUserRecord = {
   id: string;
+  account_id: string | null;
   intent: string;
 };
 
@@ -365,7 +367,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
           .eq('project_id', projectId),
         (supabase as any)
           .from('member_profiles')
-          .select('id, full_name, joined_at')
+          .select('id, account_id, full_name, joined_at')
           .eq('project_id', projectId),
         (supabase as any)
           .from('project_invitations')
@@ -383,7 +385,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
           .order('meeting_date', { ascending: false }),
         (supabase as any)
           .from('project_site_users')
-          .select('id, intent')
+          .select('id, account_id, intent')
           .eq('project_id', projectId),
         eventsPromise,
       ]);
@@ -756,6 +758,37 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
     dashboardData.events.length > 0
       ? Math.round((publicEventCount / dashboardData.events.length) * 100)
       : 0;
+  const pendingAccessRequestsCount = useMemo(
+    () => {
+      const rosterAccountIds = new Set<string>();
+
+      dashboardData.students.forEach((student) => {
+        if (student.account_id) rosterAccountIds.add(student.account_id);
+      });
+
+      dashboardData.projectMembers.forEach((member) => {
+        if (member.account_id) rosterAccountIds.add(member.account_id);
+      });
+
+      const requestedUsers = dashboardData.projectSiteUsers.filter(
+        (user) => user.intent === 'student-member-requested',
+      );
+
+      const pendingCount = requestedUsers.filter(
+        (user) =>
+          (!user.account_id || !rosterAccountIds.has(user.account_id)),
+      ).length;
+
+      console.log('[ProjectContent] access requests count', {
+        requestedUsers,
+        rosterAccountIds: Array.from(rosterAccountIds),
+        pendingCount,
+      });
+
+      return pendingCount;
+    },
+    [dashboardData.projectMembers, dashboardData.projectSiteUsers, dashboardData.students],
+  );
 
   // Action items for the task queue
   const actionItems = useMemo(
@@ -783,6 +816,17 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
         warn: true,
       },
       {
+        id: 'pending-access-requests',
+        title: 'Access requests',
+        description:
+          pendingAccessRequestsCount === 1
+            ? '1 student requested roster access for attendance.'
+            : `${pendingAccessRequestsCount} students requested roster access for attendance.`,
+        href: `/home/projects/${projectId}/members`,
+        count: pendingAccessRequestsCount,
+        warn: true,
+      },
+      {
         id: 'sessions-missing-attendance',
         title: 'Sessions missing attendance',
         description:
@@ -797,6 +841,7 @@ export function ProjectDetailContent({ projectId }: { projectId: string }) {
     [
       draftAnnouncementCount,
       dashboardData.pendingInvitations.length,
+      pendingAccessRequestsCount,
       recentSessionsWithoutEntries.length,
       projectId,
     ],

@@ -38,6 +38,7 @@ import {
 } from '@kit/ui/select';
 import { cn } from '@kit/ui/utils';
 
+import { DatePickerField } from '../_components/date-time-picker-field';
 import { AttendancePageShell } from './_components/attendance-page-shell';
 import { AttendanceStatusSelector } from './_components/attendance-status-controls';
 import {
@@ -132,7 +133,11 @@ export default function AttendancePage() {
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [pendingCreateNewMeeting, setPendingCreateNewMeeting] = useState(false);
-  const [startedAttendanceFlow, setStartedAttendanceFlow] = useState(false);
+  const [pendingReturnToSelection, setPendingReturnToSelection] =
+    useState(false);
+  const [startedAttendanceFlow, setStartedAttendanceFlow] = useState(() =>
+    Boolean(requestedSessionId),
+  );
 
   // Link-to-event modal state
   const [linkModalOpen, setLinkModalOpen] = useState(false);
@@ -234,6 +239,13 @@ export default function AttendancePage() {
   ]);
 
   useEffect(() => {
+    if (!requestedSessionId) return;
+    if (!sessions.some((session) => session.id === requestedSessionId)) return;
+    if (startedAttendanceFlow) return;
+    setStartedAttendanceFlow(true);
+  }, [requestedSessionId, sessions, startedAttendanceFlow]);
+
+  useEffect(() => {
     if (!hasUnsavedChanges) return;
     const beforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -295,7 +307,7 @@ export default function AttendancePage() {
       return;
     }
 
-    let cancelled = false;
+    let backled = false;
 
     const loadLinkedEvent = async () => {
       const { data, error } = await attendanceDb
@@ -304,7 +316,7 @@ export default function AttendancePage() {
         .eq('id', activeLinkedEventId)
         .maybeSingle();
 
-      if (cancelled) return;
+      if (backled) return;
 
       if (error) {
         console.error('Failed to load linked event', error);
@@ -318,7 +330,7 @@ export default function AttendancePage() {
     void loadLinkedEvent();
 
     return () => {
-      cancelled = true;
+      backled = true;
     };
   }, [activeLinkedEventId, attendanceDb]);
 
@@ -329,6 +341,52 @@ export default function AttendancePage() {
     setSelectedEventIdForLink(currentEventId);
     setEventSearchQuery('');
     setLinkModalOpen(true);
+  };
+
+  const handleUnlinkAttendanceFromEvent = async () => {
+    if (linkContext === 'draft') {
+      setDraftLinkedEventId(null);
+      setLinkedEvent(null);
+      setSelectedEventIdForLink(null);
+      setLinkModalOpen(false);
+      return;
+    }
+
+    if (!selectedSession) return;
+
+    const unlinked = await linkSessionToEvent(selectedSession.id, null);
+    if (unlinked) {
+      setSelectedEventIdForLink(null);
+      setLinkModalOpen(false);
+    }
+  };
+
+  const returnToMeetingSelection = () => {
+    setStartedAttendanceFlow(false);
+    setSelectedSessionId(null);
+    setSelectedDate('');
+    setDraftDate('');
+    setDraftTitle('');
+    setDraftLinkedEventId(null);
+    setEditingMeetingName(false);
+    setMeetingNameDraft('');
+    setToolsOpen(false);
+    setSearchQuery('');
+    setStatusFilter('all');
+    setManualAttendeeName('');
+    setLinkedEvent(null);
+    setLinkModalOpen(false);
+    setNewMeetingModalOpen(false);
+    setEditPreviousModalOpen(false);
+    setMeetingNameModalOpen(false);
+    setDeleteModalOpen(false);
+    setConfirmLeaveOpen(false);
+    setPendingHref(null);
+    setPendingSessionId(null);
+    setPendingCreateNewMeeting(false);
+    setPendingReturnToSelection(false);
+    setSelectedEventIdForLink(null);
+    setEventSearchQuery('');
   };
 
   const handleAddManualAttendee = () => {
@@ -569,16 +627,16 @@ export default function AttendancePage() {
               <button
                 type="button"
                 onClick={handleNewMeeting}
-                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex min-h-[300px] flex-col items-start justify-between gap-5 rounded-2xl border p-8 text-left transition-all"
+                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex aspect-square w-full flex-col items-start justify-between gap-6 rounded-2xl border p-10 text-left transition-all"
               >
-                <div className="bg-primary/10 text-primary flex h-14 w-14 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
-                  <Plus className="h-7 w-7" />
+                <div className="bg-primary/10 text-primary flex h-16 w-16 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
+                  <Plus className="h-8 w-8" />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-foreground text-xl font-semibold">
+                  <div className="text-foreground text-2xl font-semibold">
                     New meeting
                   </div>
-                  <div className="text-muted-foreground text-base leading-relaxed">
+                  <div className="text-muted-foreground text-lg leading-relaxed">
                     Take attendance for a meeting happening today or in the
                     past.
                   </div>
@@ -594,16 +652,16 @@ export default function AttendancePage() {
                   setEditPreviousModalOpen(true);
                 }}
                 disabled={sessions.length === 0}
-                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex min-h-[300px] flex-col items-start justify-between gap-5 rounded-2xl border p-8 text-left transition-all disabled:pointer-events-none disabled:opacity-50"
+                className="border-border/70 bg-card hover:bg-muted/40 hover:border-border group flex aspect-square w-full flex-col items-start justify-between gap-6 rounded-2xl border p-10 text-left transition-all disabled:pointer-events-none disabled:opacity-50"
               >
-                <div className="bg-muted text-muted-foreground flex h-14 w-14 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
-                  <CalendarDays className="h-7 w-7" />
+                <div className="bg-muted text-muted-foreground flex h-16 w-16 items-center justify-center rounded-xl transition-transform group-hover:scale-105">
+                  <CalendarDays className="h-8 w-8" />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-foreground text-xl font-semibold">
+                  <div className="text-foreground text-2xl font-semibold">
                     Edit previous meeting
                   </div>
-                  <div className="text-muted-foreground text-base leading-relaxed">
+                  <div className="text-muted-foreground text-lg leading-relaxed">
                     {sessions.length === 0
                       ? 'No previous meetings yet.'
                       : `Review or update attendance from ${sessions.length} past meeting${sessions.length === 1 ? '' : 's'}.`}
@@ -701,14 +759,14 @@ export default function AttendancePage() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="-ml-1 h-7 w-7"
+                    className="-ml-1 h-8 w-8"
                     onClick={() => {
                       if (hasUnsavedChanges) {
+                        setPendingReturnToSelection(true);
                         setConfirmLeaveOpen(true);
                         return;
                       }
-                      setStartedAttendanceFlow(false);
-                      setSelectedSessionId(null);
+                      returnToMeetingSelection();
                     }}
                     disabled={savingAttendance}
                     aria-label="Back to attendance options"
@@ -1104,8 +1162,8 @@ export default function AttendancePage() {
             <DialogTitle>Link attendance to an event?</DialogTitle>
             <DialogDescription>
               {linkContext === 'draft'
-                ? 'Choose an event now and it will be saved with this attendance meeting.'
-                : 'Choose an event to associate with this attendance meeting.'}
+                ? 'Choose an event to link with this attendance session. You can change it later. This helps admins and members identify the related meeting or event.'
+                : 'Choose an event to associate with this attendance meeting. You can always change this later.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1179,16 +1237,26 @@ export default function AttendancePage() {
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setLinkModalOpen(false);
-                setSelectedEventIdForLink(null);
-              }}
-            >
-              Skip linking
-            </Button>
+            {selectedSession?.event_id || draftLinkedEventId ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleUnlinkAttendanceFromEvent()}
+              >
+                Unlink
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setLinkModalOpen(false);
+                  setSelectedEventIdForLink(null);
+                }}
+              >
+                Skip linking
+              </Button>
+            )}
             <Button
               type="button"
               disabled={!selectedEventIdForLink}
@@ -1218,12 +1286,10 @@ export default function AttendancePage() {
           <div className="space-y-5 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="new-meeting-date">Meeting date</Label>
-              <Input
+              <DatePickerField
                 id="new-meeting-date"
-                type="date"
                 value={newMeetingModalDate}
-                onChange={(e) => setNewMeetingModalDate(e.target.value)}
-                className="h-10"
+                onChange={setNewMeetingModalDate}
               />
             </div>
 
@@ -1282,9 +1348,9 @@ export default function AttendancePage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setNewMeetingModalOpen(false)}
+              onClick={returnToMeetingSelection}
             >
-              Cancel
+              Back
             </Button>
             <Button
               type="button"
@@ -1360,9 +1426,9 @@ export default function AttendancePage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setEditPreviousModalOpen(false)}
+              onClick={returnToMeetingSelection}
             >
-              Cancel
+              Back
             </Button>
             <Button
               type="button"
@@ -1404,7 +1470,7 @@ export default function AttendancePage() {
               onClick={() => setDeleteModalOpen(false)}
               disabled={deletingSessionId === selectedSession?.id}
             >
-              Cancel
+              Back
             </Button>
             <Button
               type="button"
@@ -1428,6 +1494,10 @@ export default function AttendancePage() {
           onKeyDown={(e) =>
             handleModalPrimaryEnter(e, () => {
               setConfirmLeaveOpen(false);
+              if (pendingReturnToSelection) {
+                returnToMeetingSelection();
+                return;
+              }
               if (pendingSessionId) {
                 setSelectedSessionId(pendingSessionId);
                 setPendingSessionId(null);
@@ -1461,19 +1531,28 @@ export default function AttendancePage() {
               type="button"
               variant="outline"
               onClick={() => {
+                if (pendingReturnToSelection) {
+                  returnToMeetingSelection();
+                  return;
+                }
                 setConfirmLeaveOpen(false);
                 setPendingHref(null);
                 setPendingSessionId(null);
                 setPendingCreateNewMeeting(false);
+                setPendingReturnToSelection(false);
               }}
             >
-              Stay
+              {pendingReturnToSelection ? 'Back' : 'Stay'}
             </Button>
             <Button
               type="button"
               variant="destructive"
               onClick={() => {
                 setConfirmLeaveOpen(false);
+                if (pendingReturnToSelection) {
+                  returnToMeetingSelection();
+                  return;
+                }
                 if (pendingSessionId) {
                   setSelectedSessionId(pendingSessionId);
                   setPendingSessionId(null);
@@ -1535,7 +1614,7 @@ export default function AttendancePage() {
               onClick={() => setMeetingNameModalOpen(false)}
               disabled={savingAttendance}
             >
-              Cancel
+              Back
             </Button>
             <Button
               type="button"
